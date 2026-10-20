@@ -21,7 +21,7 @@ export function splitDamage(defenders: Dweller[], total: number, damage: Map<str
 }
 
 /** Aplica daño concentrando el fuego en el primer enemigo vivo; el sobrante pasa al siguiente. */
-export function damageEnemies(enemies: Enemy[], amount: number): Enemy[] {
+export function damageEnemies<T extends Pick<Enemy, 'hp'>>(enemies: T[], amount: number): T[] {
   let left = amount;
   return enemies.map((e) => {
     if (e.hp <= 0 || left <= 0) return e;
@@ -31,7 +31,7 @@ export function damageEnemies(enemies: Enemy[], amount: number): Enemy[] {
   });
 }
 
-export const aliveEnemies = (enemies: Enemy[]) => enemies.filter((e) => e.hp > 0);
+export const aliveEnemies = <T extends Pick<Enemy, 'hp'>>(enemies: T[]) => enemies.filter((e) => e.hp > 0);
 
 export function createIncident(kind: IncidentKind, room: Room): Incident {
   const hp = INCIDENT_DEFS[kind].hpPerBlock * room.blocks;

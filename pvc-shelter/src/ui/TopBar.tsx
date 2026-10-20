@@ -1,4 +1,4 @@
-import { Backpack, Bandage, Disc3, Droplets, FlaskConical, Smile, Users, Utensils, Wrench, Zap } from 'lucide-react';
+import { Backpack, Bandage, Compass, Disc3, Droplets, FlaskConical, Smile, Users, Utensils, Wrench, Zap } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useMemo } from 'react';
 import { globalHappiness, populationCap } from '../core/Dwellers';
@@ -48,6 +48,9 @@ export function TopBar() {
   const radaways = useGameStore((s) => s.resources.radaways);
   const itemCount = useGameStore((s) => Object.keys(s.inventory.items).length);
   const setInventoryOpen = useGameStore((s) => s.setInventoryOpen);
+  const setWastelandOpen = useGameStore((s) => s.setWastelandOpen);
+  const explorers = useGameStore((s) => Object.keys(s.expeditions).length);
+  const explorersBack = useGameStore((s) => Object.values(s.expeditions).some((e) => e.status === 'back' || e.status === 'dead'));
 
   // Los topes solo cambian cuando cambia el grid, no en cada tick.
   const caps = useMemo(
@@ -90,6 +93,15 @@ export function TopBar() {
         <Smile size={18} className={happiness >= 50 ? 'text-emerald-300' : 'text-red-300'} />
         <span className="font-bold tabular-nums">{happiness}%</span>
       </div>
+      <button
+        type="button"
+        onClick={() => setWastelandOpen(true)}
+        className={`flex items-center gap-1.5 rounded-lg px-3 py-2 hover:bg-bunker-600 ${explorersBack ? 'animate-pulse bg-amber-700/60' : 'bg-bunker-900/70'}`}
+        title="El Yermo: exploradores fuera del búnker"
+      >
+        <Compass size={18} />
+        <span className="font-bold tabular-nums">{explorers}</span>
+      </button>
       <div className="ml-auto flex items-center gap-2">
         <button
           type="button"

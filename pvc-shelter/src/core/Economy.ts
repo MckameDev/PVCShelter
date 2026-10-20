@@ -49,7 +49,7 @@ export function demolishRefund(room: Room): number {
 }
 
 /** Salas sin puestos de trabajo (pasivas o de paso). */
-const NO_WORKERS: RoomType[] = ['elevator', 'storage', 'barracks', 'barber'];
+const NO_WORKERS: RoomType[] = ['elevator', 'storage', 'barracks', 'barber', 'overseer'];
 
 export function roomCapacity(room: Room): number {
   if (room.type === 'entrance') return ENTRANCE_GUARDS; // guardias de la puerta

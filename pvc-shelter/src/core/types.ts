@@ -20,7 +20,9 @@ export type RoomType =
   // Sprint 5
   | 'weapon-workshop'
   | 'outfit-workshop'
-  | 'barber';
+  | 'barber'
+  // Sprint 7
+  | 'overseer';
 
 /** Letra del sistema P.A.T.R.O.N. que usa una sala para producir. */
 export type PatronStat = 'P' | 'A' | 'T' | 'R' | 'O' | 'N';
@@ -114,7 +116,11 @@ export interface Dweller {
   equipment: Equipment;
   /** Apariencia elegida en la Peluquería; null = la generada a partir de su id. */
   appearance: Appearance | null;
+  /** Dónde está: en el búnker, explorando el Yermo o en una misión. */
+  location: DwellerLocation;
 }
+
+export type DwellerLocation = 'bunker' | 'wasteland' | 'quest';
 
 // ---------------------------------------------------------------------------
 // Sprint 5: objetos, equipo, chatarra y fabricación
@@ -218,6 +224,14 @@ export interface GameData {
   inventory: Inventory;
   /** Asalto en curso, si lo hay. */
   raid: Raid | null;
+  /** Exploradores en el Yermo, por id de habitante. */
+  expeditions: Record<string, Expedition>;
+  /** Misión activa de la Oficina del Capataz (una a la vez). */
+  quest: ActiveQuest | null;
+  /** Misiones completadas con éxito (ids del catálogo). */
+  questsDone: string[];
+  /** Inspector Fisgón escondido en alguna sala, si lo hay. */
+  inspector: Inspector | null;
 
   nextDwellerId: number;
 
@@ -225,7 +239,89 @@ export interface GameData {
   time: number;
 }
 
+// ---------------------------------------------------------------------------
+// Sprint 7: Yermo, misiones e Inspector Fisgón
+// ---------------------------------------------------------------------------
+
+export interface LogEntry {
+  /** Segundos de exploración en que ocurrió. */
+  t: number;
+  text: string;
+  tone: 'info' | 'good' | 'bad';
+}
+
+/** Botín acumulado fuera del búnker; se entrega al volver. */
+export interface Loot {
+  codos: number;
+  /** Ids de catálogo de los objetos encontrados. */
+  items: string[];
+  junk: Record<Rarity, number>;
+  /** Planos nuevos encontrados. */
+  recipes: string[];
+}
+
+export interface Expedition {
+  dwellerId: string;
+  status: 'exploring' | 'returning' | 'back' | 'dead';
+  /** Segundos explorando (solo crece en 'exploring'). */
+  elapsed: number;
+  /** Segundos que faltan para llegar al búnker (en 'returning'). */
+  returnLeft: number;
+  /** Curativos que lleva encima. */
+  stimpaks: number;
+  radaways: number;
+  /** Eventos generados (uno por minuto de exploración). */
+  events: number;
+  loot: Loot;
+  log: LogEntry[];
+}
+
+export interface QuestEnemy {
+  id: string;
+  name: string;
+  hp: number;
+  maxHp: number;
+  dps: number;
+}
+
+/** Botín brillante en una sala de la misión, pendiente de recoger. */
+export interface LootSpot {
+  id: string;
+  label: string;
+  codos?: number;
+  item?: string;
+  junk?: Partial<Record<Rarity, number>>;
+  recipe?: string;
+}
+
+export interface ActiveQuest {
+  questId: string;
+  squad: string[];
+  status: 'traveling' | 'exploring' | 'returning' | 'done';
+  /** Segundos de viaje que faltan (ida o vuelta). */
+  travelLeft: number;
+  /** Sala actual y salas ya vistas (niebla de guerra). */
+  roomIndex: number;
+  revealed: boolean[];
+  enemies: QuestEnemy[];
+  spots: LootSpot[];
+  /** Carga del crítico manual (0..1). */
+  critCharge: number;
+  loot: Loot;
+  /** true si la escuadra cayó entera (sin botín ni recompensa). */
+  failed: boolean;
+  log: LogEntry[];
+}
+
+export interface Inspector {
+  roomId: string;
+  /** Posición horizontal dentro del búnker, en celdas. */
+  x: number;
+  timeLeft: number;
+}
+
 export type Rng = () => number;
+
 
 export type Result<T> = { ok: true; value: T } | { ok: false; reason: string };
 

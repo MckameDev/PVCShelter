@@ -30,6 +30,7 @@ export function PatronModal() {
   const close = useGameStore((s) => s.openDweller);
   const heal = useGameStore((s) => s.heal);
   const revive = useGameStore((s) => s.revive);
+  const setExpeditionDraft = useGameStore((s) => s.setExpeditionDraft);
   const expel = useGameStore((s) => s.expel);
   const meds = useGameStore((s) => s.resources);
   const game = useGameStore();
@@ -241,6 +242,23 @@ export function PatronModal() {
 
         <BarberSection key={dweller.id} dweller={dweller} />
 
+        {dweller.alive && dweller.location === 'bunker' && isAdult(dweller) && !dweller.pregnancy && (
+          <button
+            type="button"
+            onClick={() => {
+              setExpeditionDraft(dweller.id);
+              close(null);
+            }}
+            className="mt-3 w-full rounded-lg border-2 border-amber-500/70 py-1.5 text-sm font-bold hover:bg-amber-500/20"
+          >
+            Enviar al Yermo
+          </button>
+        )}
+        {dweller.location !== 'bunker' && (
+          <p className="mt-3 rounded-lg bg-black/30 p-2 text-xs text-pvc/70">
+            {dweller.location === 'wasteland' ? 'Está explorando el Yermo.' : 'Está de misión con su escuadra.'}
+          </p>
+        )}
         {room && (
           <button
             type="button"

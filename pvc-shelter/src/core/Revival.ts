@@ -1,6 +1,7 @@
 import { REVIVE_COST_BASE, REVIVE_COST_PER_LEVEL } from './config';
 import { livingCount, populationCap } from './Dwellers';
 import { freeSlots } from './Inventory';
+import { pushLog } from './Loot';
 import { fail, ok } from './types';
 import type { Dweller, GameData, Item, Result } from './types';
 
@@ -14,6 +15,7 @@ export function canRevive(data: GameData, dwellerId: string): Result<number> {
   const d = data.dwellers[dwellerId];
   if (!d) return fail('El habitante no existe.');
   if (d.alive) return fail(`${d.name} está vivo.`);
+  if (d.location === 'quest') return fail('Espera a que la escuadra vuelva al búnker.');
   if (livingCount(data) >= populationCap(data.grid)) return fail('No hay sitio: la población está al máximo.');
   const cost = reviveCost(d);
   if (data.resources.codos < cost) return fail(`Faltan Codos de PVC (necesitas ${cost}).`);
@@ -25,8 +27,23 @@ export function reviveDweller(data: GameData, dwellerId: string): Result<GameDat
   const check = canRevive(data, dwellerId);
   if (!check.ok) return check;
   const d = data.dwellers[dwellerId];
+  // Un explorador muerto en el Yermo revive allí y emprende la vuelta con su botín.
+  const exp = data.expeditions[dwellerId];
+  const expeditions =
+    exp?.status === 'dead'
+      ? {
+          ...data.expeditions,
+          [dwellerId]: {
+            ...exp,
+            status: 'returning' as const,
+            returnLeft: exp.elapsed / 2,
+            log: pushLog(exp.log, { t: exp.elapsed, text: 'Revivió y emprende el camino de vuelta.', tone: 'good' as const }),
+          },
+        }
+      : data.expeditions;
   return ok({
     ...data,
+    expeditions,
     resources: { ...data.resources, codos: data.resources.codos - check.value },
     dwellers: { ...data.dwellers, [dwellerId]: { ...d, alive: true, hp: d.maxHp, intox: 0, roomId: null } },
   });
@@ -40,6 +57,7 @@ export function expelDweller(data: GameData, dwellerId: string): Result<{ data: 
   const d = data.dwellers[dwellerId];
   if (!d) return fail('El habitante no existe.');
   if (d.alive) return fail('Solo se puede expulsar a habitantes fallecidos.');
+  if (d.location === 'quest') return fail('Espera a que la escuadra vuelva al búnker.');
 
   const gear = Object.values(d.equipment).filter((i): i is Item => i !== null);
   let slots = freeSlots(data);
@@ -55,5 +73,8 @@ export function expelDweller(data: GameData, dwellerId: string): Result<{ data: 
   }
   const dwellers = { ...data.dwellers };
   delete dwellers[dwellerId];
-  return ok({ data: { ...data, dwellers, inventory: { ...data.inventory, items } }, lost });
+  // Si murió en el Yermo, su botín se pierde con él.
+  const expeditions = { ...data.expeditions };
+  delete expeditions[dwellerId];
+  return ok({ data: { ...data, dwellers, expeditions, inventory: { ...data.inventory, items } }, lost });
 }

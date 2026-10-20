@@ -34,6 +34,11 @@ src/
 │   ├── Incidents.ts     Incidentes internos: combate, consumo extra, propagación y aparición aleatoria
 │   ├── Raids.ts         Asaltos: puerta, guardias, recorrido sala por sala y saqueo
 │   ├── Revival.ts       Revivir o expulsar a los fallecidos
+│   ├── Loot.ts          Botín traído del exterior y registros de eventos
+│   ├── Wasteland.ts     Exploración del Yermo (un evento por minuto, curativos automáticos)
+│   ├── questCatalog.ts  Catálogo de misiones (edificios, salas, enemigos y botín)
+│   ├── Quests.ts        Misiones: viaje, niebla de guerra, combate, críticos manuales
+│   ├── Inspector.ts     Inspector Fisgón (evento aleatorio interno)
 │   ├── Pathfinding.ts   Rutas entre salas (Dijkstra; ascensores como aristas verticales)
 │   ├── Production.ts    Ciclos de producción, recolección y Modo Exprés
 │   ├── Simulation.ts    Tick determinista: energía por distancia, consumo, salud, incidentes
@@ -45,6 +50,8 @@ src/
 │   ├── RoomSprite.ts    Dibujo procedural de salas y rocas
 │   ├── StatusSprite.ts  Progreso, iconos de recolección, apagones e incidentes (cada frame)
 │   ├── DwellerSprite.ts Habitantes: dibujo, caminata por waypoints y arrastre
+│   ├── RaidSprite.ts    Asaltantes (en la puerta y dentro del búnker)
+│   ├── InspectorSprite.ts Inspector Fisgón y su hit-test
 │   └── TerrainSprite.ts Cielo, superficie y subsuelo
 └── ui/        Interfaz React + Tailwind (TopBar, BuildMenu, SelectionPanel, DwellersPanel, PatronModal,
                InventoryPanel, EquipmentSection, CraftingSection, BarberSection, Toast)
@@ -55,6 +62,8 @@ Reglas de dependencia: `core/` no importa nada del resto; `canvas/` y `ui/` leen
 La simulación (`Simulation.simulate`) es pura y no usa RNG ni reloj: el mismo estado y el mismo `dt` dan siempre el mismo resultado. La aleatoriedad solo entra en acciones del jugador (recolectar, Exprés) a través de un `Rng` inyectado; los nacimientos usan un RNG derivado del propio estado, así que también son reproducibles.
 
 El movimiento de los habitantes es solo visual (`canvas/DwellerSprite`): una asignación cuenta para la producción al instante y el habitante camina hasta su sala con la ruta de `core/Pathfinding`. Así el guardado no depende de posiciones en pantalla.
+
+> Nota (Windows): el sistema de archivos no distingue mayúsculas, así que nunca debe haber dos módulos cuyo nombre solo difiera en eso (por eso el catálogo es `questCatalog.ts` y la lógica `Quests.ts`).
 
 ## Depuración
 
@@ -70,5 +79,8 @@ En desarrollo (`npm run dev`) el store está disponible en la consola como `wind
 - **Progresión**: las salas se desbloquean por población (pestañas del menú de construcción). Enfermería y Planta Depuradora producen curativos que se usan desde la ficha del habitante; las salas de entrenamiento suben un stat hasta 10; Almacenes y Barracones amplían inventario y población; la radio sube la felicidad y atrae gente.
 - **Equipo y fabricación**: en la ficha del habitante se equipan arma, atuendo y mascota. El botón de mochila abre el inventario (desguazar, chatarra, planos). Los talleres fabrican desde su panel; tocar el icono flotante recoge el objeto. Con una Peluquería, la ficha permite cambiar la apariencia.
 - **Incidentes y asaltos**: asigna habitantes a la sala afectada para combatir (el daño recibido se reparte). Una sala vacía deja que el incidente se propague. Los asaltantes golpean la puerta (mejórala y pon guardias en la entrada) y luego recorren el búnker. Los fallecidos se reviven o expulsan desde su ficha.
+- **Yermo**: arrastra un habitante a la superficie (o “Enviar al Yermo” en su ficha) y elige curativos. El botón de brújula abre el registro; “Regresar” tarda la mitad de lo explorado.
+- **Misiones**: con una Oficina del Capataz, elige misión y escuadra (hasta 3) en su panel. En la misión: despeja cada sala, recoge el botín brillante y usa el crítico con el minijuego de puntería.
+- **Inspector Fisgón**: a veces aparece escondido en una sala; tócalo antes de que se vaya para ganar Codos.
 - **Reproducción**: un hombre y una mujer adultos sin parentesco en una Sala de Descanso se cortejan; luego vienen embarazo, nacimiento y niñez (los niños comen pero no trabajan).
 - **Producción**: tocar el icono flotante recolecta todas las salas listas de ese recurso. **Exprés** produce al instante con un % de fallo; si falla, provoca un incidente.

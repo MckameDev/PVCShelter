@@ -110,7 +110,8 @@ export class DwellerLayer {
 
   /** Avanza el movimiento de todos los habitantes `dt` segundos. */
   update(state: GameData, dt: number): void {
-    const alive = Object.values(state.dwellers).filter((d) => d.alive);
+    // Quien está en el Yermo o de misión no se dibuja dentro del búnker.
+    const alive = Object.values(state.dwellers).filter((d) => d.alive && d.location === 'bunker');
     const aliveIds = new Set(alive.map((d) => d.id));
     for (const [id, w] of this.walkers) {
       if (!aliveIds.has(id)) {

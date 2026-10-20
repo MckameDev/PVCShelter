@@ -229,6 +229,16 @@ function drawDecor(g: Graphics, type: RoomType, x0: number, h: number, accent: n
       for (let i = 0; i < 4; i++) g.rect(x0 + 118, 22 + i * 12, 8, 6).fill(i % 2 ? 0xffffff : accent);
       break;
     }
+    case 'overseer': {
+      // Escritorio con mapa de misiones clavado en la lona
+      g.rect(x0 + 14, 22, 60, 40).fill(0xd9c9a3).stroke({ width: 2, color: 0x8a6a3e });
+      g.moveTo(x0 + 20, 50).lineTo(x0 + 36, 34).lineTo(x0 + 52, 44).lineTo(x0 + 66, 28).stroke({ width: 2, color: 0xc0392b });
+      for (const [px, py] of [[36, 34], [52, 44], [66, 28]] as const) g.circle(x0 + px, py, 3).fill(accent);
+      g.rect(x0 + 84, floorY - 22, 46, 6).fill(0x5c3a1f);
+      g.rect(x0 + 88, floorY - 16, 4, 16).fill(0x3d2a1f).rect(x0 + 122, floorY - 16, 4, 16).fill(0x3d2a1f);
+      g.rect(x0 + 96, floorY - 30, 16, 8).fill(0x2a2a2a);
+      break;
+    }
     case 'elevator':
       break;
   }

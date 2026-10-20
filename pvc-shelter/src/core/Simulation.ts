@@ -29,8 +29,14 @@ import { craftTime, WORKSHOP_KIND } from './Crafting';
 import { effectiveStat, petBonus } from './Equipment';
 import { maybeStartRandomIncident, updateIncidents } from './Incidents';
 import type { IncidentContext, IncidentEvent } from './Incidents';
+import { updateInspector } from './Inspector';
+import type { InspectorEvent } from './Inspector';
+import { updateQuest } from './Quests';
+import type { QuestEvent } from './Quests';
 import { maybeStartRaid, raidRoomId, updateRaid } from './Raids';
 import type { RaidEvent } from './Raids';
+import { updateExpeditions } from './Wasteland';
+import type { WastelandEvent } from './Wasteland';
 import { cycleTime, getRuntime } from './Production';
 import { createRng, hashString } from './random';
 import type { Dweller, GameData, GridState, Room, RoomRuntime } from './types';
@@ -46,6 +52,9 @@ export type SimEvent =
   | LifeEvent
   | IncidentEvent
   | RaidEvent
+  | WastelandEvent
+  | QuestEvent
+  | InspectorEvent
   | { type: 'dweller-died'; name: string }
   | { type: 'shortage'; resource: 'food' | 'water' | 'energy' };
 
@@ -144,7 +153,9 @@ export function simulate(data: GameData, dt: number): { data: GameData; events: 
     }
   }
 
-  const alive = Object.values(dwellers).filter((d) => d.alive);
+  // Solo cuentan para consumo, salud y combate quienes están dentro del búnker
+  // (los exploradores y las escuadras en misión viven de lo que llevan).
+  const alive = Object.values(dwellers).filter((d) => d.alive && d.location === 'bunker');
   const workersByRoom = new Map<string, Dweller[]>();
   for (const d of alive) {
     if (d.roomId) workersByRoom.set(d.roomId, [...(workersByRoom.get(d.roomId) ?? []), d]);
@@ -280,6 +291,7 @@ export function simulate(data: GameData, dt: number): { data: GameData; events: 
   for (const d of Object.values(dwellers)) {
     if (!d.alive) continue;
     resources.codos += applyLevelUps(d, life);
+    if (d.location !== 'bunker') continue;
     const room = d.roomId ? grid.rooms[d.roomId] : undefined;
     const target = happinessTarget(d, {
       room,
@@ -304,11 +316,40 @@ export function simulate(data: GameData, dt: number): { data: GameData; events: 
   }
   const nextDwellerId = updatePregnanciesAndGrowth(dwellers, grid, populationCap(grid), nextId, dt, life);
 
+  // 8. Fuera del búnker: exploradores del Yermo y escuadra en misión.
+  const expeditions = { ...data.expeditions };
+  const outside: (WastelandEvent | QuestEvent | InspectorEvent)[] = updateExpeditions(
+    expeditions,
+    dwellers,
+    data.inventory.recipes,
+    grid.seed,
+    dt,
+  );
+  let quest = data.quest;
+  if (quest) {
+    const res = updateQuest(quest, dwellers, dt);
+    quest = res.quest;
+    outside.push(...res.events);
+  }
+
+  // 9. Inspector Fisgón.
+  const insp = updateInspector(data.inspector, grid, data.time, dt);
+  outside.push(...insp.events);
 
   return {
-    data: { ...data, resources, runtime, dwellers, raid, nextDwellerId, time: data.time + dt },
-
-    events: [...events, ...life],
+    data: {
+      ...data,
+      resources,
+      runtime,
+      dwellers,
+      raid,
+      expeditions,
+      quest,
+      inspector: insp.inspector,
+      nextDwellerId,
+      time: data.time + dt,
+    },
+    events: [...events, ...life, ...outside],
   };
 }
 

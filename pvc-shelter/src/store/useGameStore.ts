@@ -12,7 +12,12 @@ import { collectResource, RESOURCE_NAMES, rushRoom } from '../core/Production';
 import { advance } from '../core/Simulation';
 import type { SimEvent } from '../core/Simulation';
 import { INCIDENT_DEFS, RAID_DEFS, ROOM_DEFS } from '../core/config';
+import { catchInspector } from '../core/Inspector';
+import { lootSummary } from '../core/Loot';
+import { questById } from '../core/questCatalog';
+import { advanceQuest, collectQuest, pickLootSpot, questCrit, questHeal, startQuest } from '../core/Quests';
 import { expelDweller, reviveDweller } from '../core/Revival';
+import { collectExpedition, recallExpedition, startExpedition } from '../core/Wasteland';
 import type {
   Appearance,
   GameData,
@@ -43,6 +48,10 @@ interface UiState {
   /** Habitante cuya ficha P.A.T.R.O.N. está abierta. */
   dwellerModalId: string | null;
   inventoryOpen: boolean;
+  wastelandOpen: boolean;
+  questOpen: boolean;
+  /** Habitante a punto de salir al Yermo (diálogo de curativos abierto). */
+  expeditionDraft: string | null;
 }
 
 interface Actions {
@@ -69,6 +78,20 @@ interface Actions {
   craft: (roomId: string, defId: string) => boolean;
   collectCrafted: (roomId: string) => boolean;
   restyle: (dwellerId: string, appearance: Appearance) => boolean;
+  setWastelandOpen: (open: boolean) => void;
+  setQuestOpen: (open: boolean) => void;
+  setExpeditionDraft: (dwellerId: string | null) => void;
+  sendExpedition: (dwellerId: string, stimpaks: number, radaways: number) => boolean;
+  recallExplorer: (dwellerId: string) => boolean;
+  collectExplorer: (dwellerId: string) => boolean;
+  sendQuest: (questId: string, squad: string[]) => boolean;
+  advanceQuest: () => boolean;
+  pickQuestLoot: (spotId: string) => boolean;
+  /** Dispara el crítico manual con la precisión del minijuego (0..1). */
+  fireCrit: (accuracy: number) => boolean;
+  healInQuest: (dwellerId: string) => boolean;
+  finishQuest: () => boolean;
+  catchInspector: () => boolean;
   revive: (dwellerId: string) => boolean;
   expel: (dwellerId: string) => boolean;
   dismissNotice: () => void;
@@ -93,6 +116,10 @@ const pickData = (s: GameState): GameData => ({
   runtime: s.runtime,
   inventory: s.inventory,
   raid: s.raid,
+  expeditions: s.expeditions,
+  quest: s.quest,
+  questsDone: s.questsDone,
+  inspector: s.inspector,
   nextDwellerId: s.nextDwellerId,
   time: s.time,
 });
@@ -105,6 +132,9 @@ const freshState = (seed: number): GameData & UiState => ({
   dwellersOpen: false,
   dwellerModalId: null,
   inventoryOpen: false,
+  wastelandOpen: false,
+  questOpen: false,
+  expeditionDraft: null,
 });
 
 const incidentLabel = (kind: IncidentKind) => INCIDENT_DEFS[kind].label;
@@ -123,6 +153,18 @@ function describeEvent(e: SimEvent, grid: GridState): Notice {
       return notice(`Rechazaron a ${RAID_DEFS[e.kind].label}. +${e.codos} Codos.`, 'success');
     case 'raid-left':
       return notice(`${capitalize(RAID_DEFS[e.kind].label)} se fueron con ${Math.round(e.loot.codos)} Codos robados.`, 'error');
+    case 'explorer-died':
+      return notice(`${e.name} ha muerto en el Yermo. Puedes revivirlo desde el panel del Yermo.`, 'error');
+    case 'explorer-back':
+      return notice(`${e.name} volvió del Yermo. Recoge su botín.`, 'success');
+    case 'quest-arrived':
+      return notice(`La escuadra llegó a ${questById(e.questId)?.name ?? 'su destino'}.`, 'info');
+    case 'quest-failed':
+      return notice('La escuadra ha caído en la misión.', 'error');
+    case 'quest-back':
+      return notice('La escuadra volvió de la misión. Recoge el botín en la Oficina del Capataz.', 'success');
+    case 'inspector-left':
+      return notice('El Inspector Fisgón se escabulló…', 'info');
     case 'incident-started':
       return notice(`¡${INCIDENT_DEFS[e.kind].name} en ${roomName(grid, e.roomId)}!`, 'error');
     case 'incident-spread':
@@ -157,8 +199,14 @@ const EVENT_PRIORITY: SimEvent['type'][] = [
   'dweller-died',
   'raid-left',
   'raid-repelled',
+  'explorer-died',
+  'quest-failed',
   'incident-started',
   'incident-spread',
+  'explorer-back',
+  'quest-back',
+  'quest-arrived',
+  'inspector-left',
   'shortage',
   'fled',
   'birth',
@@ -365,7 +413,99 @@ export const useGameStore = create<GameState>()((set, get) => {
       return true;
     },
 
+    setWastelandOpen: (open) => set({ wastelandOpen: open }),
+    setQuestOpen: (open) => set({ questOpen: open }),
+    setExpeditionDraft: (dwellerId) => set({ expeditionDraft: dwellerId }),
+
+    sendExpedition: (dwellerId, stimpaks, radaways) => {
+      const res = startExpedition(pickData(get()), dwellerId, stimpaks, radaways);
+      if (!res.ok) return fail(res.reason);
+      set({
+        ...res.value,
+        expeditionDraft: null,
+        dwellerModalId: null,
+        notice: notice(`${res.value.dwellers[dwellerId].name} salió al Yermo.`, 'info'),
+      });
+      return true;
+    },
+
+    recallExplorer: (dwellerId) => {
+      const res = recallExpedition(pickData(get()), dwellerId);
+      if (!res.ok) return fail(res.reason);
+      set(res.value);
+      return true;
+    },
+
+    collectExplorer: (dwellerId) => {
+      const res = collectExpedition(pickData(get()), dwellerId);
+      if (!res.ok) return fail(res.reason);
+      const { data, scrapped, expedition } = res.value;
+      const extra = scrapped > 0 ? ` (${scrapped} objetos desguazados por falta de sitio)` : '';
+      set({ ...data, notice: notice(`Botín: ${lootSummary(expedition.loot)}${extra}.`, 'success') });
+      return true;
+    },
+
+    sendQuest: (questId, squad) => {
+      const res = startQuest(pickData(get()), questId, squad);
+      if (!res.ok) return fail(res.reason);
+      set({ ...res.value, notice: notice(`La escuadra parte hacia ${questById(questId)?.name}.`, 'info') });
+      return true;
+    },
+
+    advanceQuest: () => {
+      const res = advanceQuest(pickData(get()));
+      if (!res.ok) return fail(res.reason);
+      set(res.value);
+      return true;
+    },
+
+    pickQuestLoot: (spotId) => {
+      const res = pickLootSpot(pickData(get()), spotId);
+      if (!res.ok) return fail(res.reason);
+      set(res.value);
+      return true;
+    },
+
+    fireCrit: (accuracy) => {
+      const res = questCrit(pickData(get()), accuracy);
+      if (!res.ok) return fail(res.reason);
+      set(res.value.data);
+      return true;
+    },
+
+    healInQuest: (dwellerId) => {
+      const res = questHeal(pickData(get()), dwellerId);
+      if (!res.ok) return fail(res.reason);
+      set(res.value);
+      return true;
+    },
+
+    finishQuest: () => {
+      const state = get();
+      const loot = state.quest?.loot;
+      const res = collectQuest(pickData(state));
+      if (!res.ok) return fail(res.reason);
+      const { data, scrapped, failed } = res.value;
+      const extra = scrapped > 0 ? ` (${scrapped} objetos desguazados por falta de sitio)` : '';
+      set({
+        ...data,
+        questOpen: false,
+        notice: failed
+          ? notice('La escuadra volvió sin botín. Puedes revivir a los caídos desde su ficha.', 'info')
+          : notice(`Botín de la misión: ${loot ? lootSummary(loot) : 'nada'}${extra}.`, 'success'),
+      });
+      return true;
+    },
+
+    catchInspector: () => {
+      const res = catchInspector(pickData(get()));
+      if (!res.ok) return fail(res.reason);
+      set({ ...res.value.data, notice: notice(`¡Pillaste al Inspector Fisgón! +${res.value.reward} Codos.`, 'success') });
+      return true;
+    },
+
     revive: (dwellerId) => {
+
       const res = reviveDweller(pickData(get()), dwellerId);
       if (!res.ok) return fail(res.reason);
       set({ ...res.value, notice: notice(`${res.value.dwellers[dwellerId].name} ha vuelto a la vida.`, 'success') });

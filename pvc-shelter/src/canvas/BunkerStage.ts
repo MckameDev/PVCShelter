@@ -8,7 +8,9 @@ import type { Placement } from '../core/GridManager';
 import type { ProducedResource } from '../core/types';
 import { useGameStore } from '../store/useGameStore';
 import { cycleTime, getRuntime } from '../core/Production';
+import { canStartExpedition } from '../core/Wasteland';
 import { DwellerLayer } from './DwellerSprite';
+import { drawInspector, hitInspector } from './InspectorSprite';
 import { drawRaid } from './RaidSprite';
 import { createRockView, createRoomView } from './RoomSprite';
 import { drawRoomStatus, READY_ICON_RADIUS, readyIconCenter } from './StatusSprite';
@@ -62,6 +64,8 @@ export class BunkerStage {
   /** Habitante agarrado con el puntero; `active` cuando ya superó el umbral de arrastre. */
   private dwellerGrab: { id: string; origin: Point; active: boolean } | null = null;
   private dropTarget: { roomId: string; valid: boolean } | null = null;
+  /** Arrastrando un habitante sobre la superficie: soltarlo lo envía al Yermo. */
+  private dropOnSurface: { valid: boolean } | null = null;
 
   async init(host: HTMLElement): Promise<void> {
     const app = new Application();
@@ -222,6 +226,15 @@ export class BunkerStage {
       this.ghostLabel.visible = true;
     }
 
+    if (this.dropOnSurface) {
+      const color = this.dropOnSurface.valid ? 0x3ddc84 : 0xff5a4a;
+      g.rect(this.bounds.left, this.bounds.top, this.bounds.right - this.bounds.left, -this.bounds.top)
+        .fill({ color, alpha: 0.18 })
+        .stroke({ width: 4, color });
+      this.ghostLabel.text = this.dropOnSurface.valid ? 'Soltar para salir al Yermo' : 'No puede salir al Yermo';
+      this.ghostLabel.position.set((this.bounds.right + this.bounds.left) / 2, this.bounds.top / 2);
+      this.ghostLabel.visible = true;
+    }
     if (this.dropTarget) {
       const room = state.grid.rooms[this.dropTarget.roomId];
       if (room) {
@@ -279,7 +292,10 @@ export class BunkerStage {
     if (this.pointers.size === 1) {
       const p = this.localPoint(e);
       this.dragged = false;
-      const id = useGameStore.getState().buildType ? null : this.dwellers.hitTest(this.screenToWorld(p));
+      const state = useGameStore.getState();
+      const world = this.screenToWorld(p);
+      // El Inspector tiene prioridad: se atrapa con un toque, no se arrastra a nadie.
+      const id = state.buildType || hitInspector(state.inspector, state.grid, world) ? null : this.dwellers.hitTest(world);
       if (id) {
         this.dwellerGrab = { id, origin: p, active: false };
         this.dragOrigin = null;
@@ -359,6 +375,7 @@ export class BunkerStage {
     this.dwellers.dragTo(world);
 
     const state = useGameStore.getState();
+    this.dropOnSurface = world.y < 0 ? { valid: canStartExpedition(state, grab.id, 0, 0).ok } : null;
     const room = findRoomAt(state.grid, Math.floor(world.y / FLOOR_H), Math.floor(world.x / CELL_W));
     const dweller = state.dwellers[grab.id];
     this.dropTarget =
@@ -371,8 +388,17 @@ export class BunkerStage {
   private finishDwellerDrag(grab: { id: string; active: boolean }): void {
     const state = useGameStore.getState();
     const target = this.dropTarget;
+    const surface = this.dropOnSurface;
     this.dwellerGrab = null;
     this.dropTarget = null;
+    this.dropOnSurface = null;
+    if (surface && grab.active) {
+      // Fuera del búnker: diálogo para elegir curativos (muestra el motivo si no puede salir).
+      this.dwellers.endDrag();
+      state.setExpeditionDraft(grab.id);
+      this.drawOverlay(state);
+      return;
+    }
     if (!grab.active) {
       // Un toque sin arrastre abre la ficha del habitante.
       state.openDweller(grab.id);
@@ -388,6 +414,7 @@ export class BunkerStage {
     if (this.dwellerGrab?.active) this.dwellers.endDrag();
     this.dwellerGrab = null;
     this.dropTarget = null;
+    this.dropOnSurface = null;
   }
 
   private readonly onPointerLeave = () => {
@@ -474,6 +501,7 @@ export class BunkerStage {
       );
     }
     if (state.raid) drawRaid(g, state.raid, state.grid, now);
+    if (state.inspector) drawInspector(g, state.inspector, state.grid, now);
   };
 
   /** Si el punto cae sobre el icono de una sala lista, devuelve el recurso a recolectar. */
@@ -491,6 +519,11 @@ export class BunkerStage {
   private handleTap(screen: Point): void {
     const state = useGameStore.getState();
     const world = this.screenToWorld(screen);
+
+    if (!state.buildType && hitInspector(state.inspector, state.grid, world)) {
+      state.catchInspector();
+      return;
+    }
 
     if (!state.buildType) {
       const icon = this.pickReadyIcon(world);

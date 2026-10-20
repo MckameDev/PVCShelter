@@ -40,6 +40,7 @@ export function equipItem(data: GameData, dwellerId: string, itemId: string): Re
   const item = data.inventory.items[itemId];
   if (!dweller || !dweller.alive) return fail('El habitante no está disponible.');
   if (!isAdult(dweller)) return fail('Los niños no pueden equiparse.');
+  if (dweller.location !== 'bunker') return fail(`${dweller.name} está fuera del búnker.`);
   if (!item) return fail('El objeto no está en el inventario.');
 
   const slot: ItemKind = ITEMS[item.defId].kind;

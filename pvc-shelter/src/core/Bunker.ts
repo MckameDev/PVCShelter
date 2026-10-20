@@ -23,6 +23,10 @@ export function createNewGame(seed: number): GameData {
     runtime,
     inventory: createStartingInventory(),
     raid: null,
+    expeditions: {},
+    quest: null,
+    questsDone: [],
+    inspector: null,
     nextDwellerId: nextId,
     time: 0,
   };

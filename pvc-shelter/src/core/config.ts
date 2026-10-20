@@ -302,6 +302,21 @@ export const ROOM_DEFS: Record<RoomType, RoomDef> = {
     color: 0x6b2a3a,
     accent: 0xff5c8a,
   }),
+
+  // --- Sprint 7 -------------------------------------------------------------
+  overseer: room('overseer', {
+    name: 'Oficina del Capataz',
+    description: 'Permite enviar escuadras de hasta 3 habitantes a misiones en el exterior.',
+    category: 'utility',
+    unlockPopulation: 20,
+    mergeable: false,
+    maxLevel: 1,
+    baseCost: 800,
+    costIncrement: 0,
+    energyDraw: 0.03,
+    color: 0x2a3d4a,
+    accent: 0x7ad1ff,
+  }),
 };
 
 
@@ -531,3 +546,36 @@ export const RAID_REWARD_PER_ENEMY = 40;
 export const DEATH_HAPPINESS_PENALTY = 20;
 export const REVIVE_COST_BASE = 100;
 export const REVIVE_COST_PER_LEVEL = 25;
+
+// ---------------------------------------------------------------------------
+// Sprint 7: Yermo, misiones e Inspector Fisgón
+// ---------------------------------------------------------------------------
+
+/** Un evento del registro del Yermo por cada minuto de exploración. */
+export const WASTELAND_EVENT_SECONDS = 60;
+/** La dificultad (daño y botín) crece +1 cada este número de segundos explorando. */
+export const WASTELAND_DANGER_SECONDS = 600;
+export const MAX_EXPEDITION_MEDS = 15;
+/** Umbrales para que el explorador use sus curativos por su cuenta. */
+export const AUTO_STIMPAK_HP_RATIO = 0.5;
+export const AUTO_RADAWAY_INTOX = 30;
+/** Entradas del registro que se conservan (las más recientes). */
+export const LOG_LIMIT = 60;
+
+/** Escuadra máxima por misión. */
+export const QUEST_SQUAD_SIZE = 3;
+/** Segundos para cargar el crítico manual en combate. */
+export const QUEST_CRIT_CHARGE_SECONDS = 6;
+/** Multiplicador del crítico según la puntería (0 = fallo, 1 = centro perfecto). */
+export const CRIT_MULTIPLIERS = [
+  { min: 0.9, mult: 5, label: '¡Crítico perfecto!' },
+  { min: 0.6, mult: 3, label: '¡Crítico!' },
+  { min: 0.3, mult: 1.5, label: 'Golpe de refilón' },
+  { min: 0, mult: 0, label: 'Fallaste' },
+] as const;
+
+export const INSPECTOR_CHECK_SECONDS = 45;
+export const INSPECTOR_CHANCE = 0.2;
+export const INSPECTOR_VISIBLE_SECONDS = 12;
+export const INSPECTOR_REWARD_BASE = 50;
+export const INSPECTOR_REWARD_PER_DWELLER = 5;

@@ -58,6 +58,7 @@ function baseDweller(id: string, name: string, sex: Dweller['sex'], stats: Patro
     training: 0,
     equipment: { weapon: null, outfit: null, pet: null },
     appearance: null,
+    location: 'bunker',
   };
 }
 
@@ -146,6 +147,7 @@ export function assignDweller(data: GameData, dwellerId: string, roomId: string 
   const dweller = data.dwellers[dwellerId];
   if (!dweller) return fail('El habitante no existe.');
   if (!dweller.alive) return fail(`${dweller.name} ya no está con nosotros.`);
+  if (dweller.location !== 'bunker') return fail(`${dweller.name} está fuera del búnker.`);
   if (dweller.roomId === roomId) return ok(data);
 
   if (roomId !== null) {

@@ -4,7 +4,10 @@ import { useGameStore } from './store/useGameStore';
 import { BuildMenu } from './ui/BuildMenu';
 import { DwellersPanel } from './ui/DwellersPanel';
 import { GameCanvas } from './ui/GameCanvas';
+import { ExpeditionDialog } from './ui/ExpeditionDialog';
 import { InventoryPanel } from './ui/InventoryPanel';
+import { QuestModal } from './ui/QuestModal';
+import { WastelandPanel } from './ui/WastelandPanel';
 import { PatronModal } from './ui/PatronModal';
 import { RaidBanner } from './ui/RaidBanner';
 import { SelectionPanel } from './ui/SelectionPanel';
@@ -25,8 +28,13 @@ export default function App() {
       if (e.key !== 'Escape') return;
       const { buildType, cancelBuild, dwellersOpen, setDwellersOpen, select, dwellerModalId, openDweller } =
         useGameStore.getState();
-      const { inventoryOpen, setInventoryOpen } = useGameStore.getState();
-      if (dwellerModalId) openDweller(null);
+      const { inventoryOpen, setInventoryOpen, questOpen, setQuestOpen, expeditionDraft, setExpeditionDraft } =
+        useGameStore.getState();
+      const { wastelandOpen, setWastelandOpen } = useGameStore.getState();
+      if (expeditionDraft) setExpeditionDraft(null);
+      else if (questOpen) setQuestOpen(false);
+      else if (dwellerModalId) openDweller(null);
+      else if (wastelandOpen) setWastelandOpen(false);
       else if (inventoryOpen) setInventoryOpen(false);
       else if (buildType) cancelBuild();
       else if (dwellersOpen) setDwellersOpen(false);
@@ -46,9 +54,12 @@ export default function App() {
         <Toast />
         <DwellersPanel />
         <InventoryPanel />
+        <WastelandPanel />
         <SelectionPanel />
         <BuildMenu />
         <PatronModal />
+        <QuestModal />
+        <ExpeditionDialog />
       </div>
     </main>
   );

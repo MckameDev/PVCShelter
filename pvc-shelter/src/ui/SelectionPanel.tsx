@@ -41,6 +41,7 @@ import { canRush, cycleTime, cycleYield, getRuntime, RESOURCE_NAMES } from '../c
 import type { Rock, Room } from '../core/types';
 import { useGameStore } from '../store/useGameStore';
 import { CraftingSection } from './CraftingSection';
+import { OverseerSection } from './OverseerSection';
 import { HealthBar } from './HealthBar';
 import { hexColor, ROOM_ICONS } from './roomIcons';
 
@@ -430,6 +431,7 @@ function RoomDetails({ room }: { room: Room }) {
       <TrainingSection room={room} />
       <RadioSection room={room} />
       <CraftingSection room={room} />
+      <OverseerSection key={room.id} room={room} />
       {room.type === 'barber' && (
         <p className="mb-3 rounded-lg bg-black/30 p-2 text-xs text-pvc/70">
           Abre la ficha de cualquier habitante para cambiarle piel, color de pelo y peinado.

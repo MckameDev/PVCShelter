@@ -1,5 +1,6 @@
 import {
   ArrowUpDown,
+  ClipboardList,
   BedDouble,
   BookOpen,
   Crosshair,
@@ -44,6 +45,7 @@ export const ROOM_ICONS: Record<RoomType, LucideIcon> = {
   'weapon-workshop': Swords,
   'outfit-workshop': Shirt,
   barber: Scissors,
+  overseer: ClipboardList,
 };
 
 /** Color CSS a partir del acento hex de RoomDef. */
