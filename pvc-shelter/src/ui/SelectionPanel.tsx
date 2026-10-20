@@ -1,17 +1,21 @@
-import { ArrowBigUp, Mountain, Pickaxe, Trash, Wrench, X } from 'lucide-react';
+import { ArrowBigUp, Flame, Mountain, Pickaxe, Trash, UserMinus, Wrench, X, Zap, ZapOff } from 'lucide-react';
 import { useState } from 'react';
 import type { ReactNode } from 'react';
+import { canDemolish } from '../core/Bunker';
 import { ROOM_DEFS } from '../core/config';
+import { dwellersInRoom, PATRON_NAMES } from '../core/Dwellers';
 import { demolishRefund, rockClearCost, roomCapacity, roomEfficiency, upgradeCost } from '../core/Economy';
-import { canDemolishRoom, canUpgradeRoom } from '../core/GridManager';
+import { canUpgradeRoom } from '../core/GridManager';
+import { canRush, cycleTime, cycleYield, getRuntime, RESOURCE_NAMES } from '../core/Production';
 import type { Rock, Room } from '../core/types';
 import { useGameStore } from '../store/useGameStore';
+import { HealthBar } from './HealthBar';
 import { hexColor, ROOM_ICONS } from './roomIcons';
 
 function Panel({ title, icon, children }: { title: string; icon: ReactNode; children: ReactNode }) {
   const select = useGameStore((s) => s.select);
   return (
-    <aside className="pointer-events-auto absolute right-3 bottom-28 left-3 rounded-xl border-2 border-bunker-600 bg-bunker-800/95 p-3 shadow-2xl sm:left-auto sm:w-80">
+    <aside className="pointer-events-auto absolute right-3 bottom-28 left-3 max-h-[65vh] overflow-y-auto rounded-xl border-2 border-bunker-600 bg-bunker-800/95 p-3 shadow-2xl sm:left-auto sm:w-80">
       <div className="mb-2 flex items-center gap-2">
         {icon}
         <h2 className="flex-1 text-base font-bold">{title}</h2>
@@ -33,10 +37,17 @@ function Row({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
-function ActionButton(props: { onClick: () => void; disabled?: boolean; tone: 'primary' | 'danger'; children: ReactNode; title?: string }) {
+function ActionButton(props: {
+  onClick: () => void;
+  disabled?: boolean;
+  tone: 'primary' | 'danger' | 'go';
+  children: ReactNode;
+  title?: string;
+}) {
   const tones = {
     primary: 'border-tape/70 bg-tape/15 hover:bg-tape/30',
     danger: 'border-red-500/70 bg-red-500/15 hover:bg-red-500/30',
+    go: 'border-emerald-400/70 bg-emerald-500/15 hover:bg-emerald-500/30',
   };
   return (
     <button
@@ -51,20 +62,158 @@ function ActionButton(props: { onClick: () => void; disabled?: boolean; tone: 'p
   );
 }
 
+/** Estado del ciclo de producción, Exprés y recolección. */
+function ProductionSection({ room }: { room: Room }) {
+  const state = useGameStore();
+  const def = ROOM_DEFS[room.type];
+  if (!def.produces) return null;
+
+  const runtime = getRuntime(state, room.id);
+  const workers = dwellersInRoom(state, room.id);
+  const cycle = cycleTime(room, workers);
+  const rush = canRush(state, room.id);
+  const resourceName = RESOURCE_NAMES[def.produces];
+
+  let status: ReactNode;
+  if (runtime.incident) {
+    const pct = Math.ceil((runtime.incident.hp / runtime.incident.maxHp) * 100);
+    status = (
+      <span className="flex items-center gap-1 text-red-300">
+        <Flame size={14} /> {runtime.incident.kind === 'fire' ? 'Incendio' : 'Plaga de cucarachas'} ({pct}%)
+        {workers.length === 0 && ' · ¡asigna habitantes para combatirlo!'}
+      </span>
+    );
+  } else if (!runtime.powered) {
+    status = (
+      <span className="flex items-center gap-1 text-red-300">
+        <ZapOff size={14} /> Sin energía: está demasiado lejos de un generador
+      </span>
+    );
+  } else if (runtime.ready) {
+    status = <span className="text-emerald-300">¡{resourceName} lista para recolectar!</span>;
+  } else if (cycle === null) {
+    status = <span className="text-pvc/60">Sin trabajadores: asigna habitantes para producir.</span>;
+  } else {
+    const pct = Math.min(100, (runtime.progress / cycle) * 100);
+    status = (
+      <div>
+        <div className="flex justify-between text-xs text-pvc/70">
+          <span>Produciendo {cycleYield(room)} de {resourceName}</span>
+          <span className="tabular-nums">{Math.ceil(cycle - runtime.progress)} s</span>
+        </div>
+        <div className="mt-1 h-2 overflow-hidden rounded-full bg-black/60">
+          <div className="h-full rounded-full bg-emerald-400" style={{ width: `${pct}%` }} />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-3 rounded-lg bg-black/30 p-2 text-sm">
+      {status}
+      <div className="mt-2 flex gap-2">
+        {runtime.ready ? (
+          <ActionButton tone="go" onClick={() => state.collect(def.produces!)}>
+            Recolectar
+          </ActionButton>
+        ) : (
+          <ActionButton
+            tone="primary"
+            onClick={() => state.rush(room.id)}
+            disabled={!rush.ok}
+            title={rush.ok ? 'Producir al instante. Si falla, provoca un incidente.' : rush.reason}
+          >
+            <Zap size={14} /> Exprés
+            {rush.ok && (
+              <span className="text-xs font-normal text-red-300">{Math.round(rush.value.failChance * 100)}% fallo</span>
+            )}
+          </ActionButton>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Habitantes asignados y selector para asignar a otros. */
+function WorkersSection({ room }: { room: Room }) {
+  const dwellers = useGameStore((s) => s.dwellers);
+  const rooms = useGameStore((s) => s.grid.rooms);
+  const assign = useGameStore((s) => s.assign);
+  const capacity = roomCapacity(room);
+  const stat = ROOM_DEFS[room.type].stat;
+  if (capacity === 0) return null;
+
+  const workers = dwellersInRoom({ dwellers }, room.id);
+  // Candidatos: primero los sin asignar, luego por el stat que usa la sala.
+  const candidates = Object.values(dwellers)
+    .filter((d) => d.alive && d.roomId !== room.id)
+    .sort((a, b) => Number(a.roomId !== null) - Number(b.roomId !== null) || (stat ? b.stats[stat] - a.stats[stat] : 0));
+
+  return (
+    <div className="mb-3">
+      <div className="mb-1 flex justify-between text-xs font-bold uppercase tracking-wider text-pvc/50">
+        <span>Habitantes</span>
+        <span>
+          {workers.length} / {capacity}
+        </span>
+      </div>
+      <ul className="space-y-1">
+        {workers.map((d) => (
+          <li key={d.id} className="flex items-center gap-2 rounded-md bg-black/30 px-2 py-1 text-sm">
+            <div className="min-w-0 flex-1">
+              <div className="flex justify-between gap-2">
+                <span className="truncate">{d.name}</span>
+                {stat && (
+                  <span className="text-xs text-tape" title={PATRON_NAMES[stat]}>
+                    {stat} {d.stats[stat]}
+                  </span>
+                )}
+              </div>
+              <HealthBar dweller={d} className="mt-1" />
+            </div>
+            <button
+              type="button"
+              aria-label={`Sacar a ${d.name}`}
+              title="Sacar de la sala"
+              onClick={() => assign(d.id, null)}
+              className="rounded p-1 hover:bg-bunker-600"
+            >
+              <UserMinus size={14} />
+            </button>
+          </li>
+        ))}
+      </ul>
+      {workers.length < capacity && candidates.length > 0 && (
+        <select
+          value=""
+          onChange={(e) => e.target.value && assign(e.target.value, room.id)}
+          className="mt-1.5 w-full rounded-md border border-bunker-600 bg-bunker-900 px-2 py-1.5 text-sm"
+          aria-label="Asignar habitante"
+        >
+          <option value="">+ Asignar habitante…</option>
+          {candidates.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.name}
+              {stat ? ` · ${stat} ${d.stats[stat]}` : ''}
+              {d.roomId && rooms[d.roomId] ? ` (en ${ROOM_DEFS[rooms[d.roomId].type].name})` : ''}
+            </option>
+          ))}
+        </select>
+      )}
+    </div>
+  );
+}
+
 function RoomDetails({ room }: { room: Room }) {
-  const grid = useGameStore((s) => s.grid);
-  const codos = useGameStore((s) => s.resources.codos);
-  const upgrade = useGameStore((s) => s.upgradeRoom);
-  const demolish = useGameStore((s) => s.demolishRoom);
+  const state = useGameStore();
   // Se reinicia al cambiar de sala porque el padre usa key={room.id}.
   const [confirming, setConfirming] = useState(false);
 
   const def = ROOM_DEFS[room.type];
   const Icon = ROOM_ICONS[room.type];
-  const upCheck = canUpgradeRoom(grid, room.id);
+  const upCheck = canUpgradeRoom(state.grid, room.id);
   const upCost = upgradeCost(room);
-  const demoCheck = canDemolishRoom(grid, room.id);
-  const capacity = roomCapacity(room);
+  const demoCheck = canDemolish(state, room.id);
 
   return (
     <Panel title={def.name} icon={<Icon size={20} style={{ color: hexColor(def.accent) }} />}>
@@ -72,18 +221,21 @@ function RoomDetails({ room }: { room: Room }) {
       <div className="mb-3 space-y-0.5">
         {def.maxLevel > 1 && <Row label="Nivel" value={`${room.level} / ${def.maxLevel}`} />}
         {def.mergeable && <Row label="Tamaño" value={['Simple', 'Doble', 'Triple'][room.blocks - 1]} />}
-        {capacity > 0 && <Row label="Capacidad" value={`${capacity} habitantes`} />}
-        {def.stat && <Row label="Atributo" value={def.stat} />}
-        {def.stat && <Row label="Eficiencia" value={`×${roomEfficiency(room).toFixed(1)}`} />}
+        {def.stat && <Row label="Atributo" value={`${PATRON_NAMES[def.stat]} (${def.stat})`} />}
+        {def.produces && <Row label="Eficiencia" value={`×${roomEfficiency(room).toFixed(1)}`} />}
+        {def.energyDraw > 0 && <Row label="Consumo" value={`${(def.energyDraw * room.blocks * 60).toFixed(1)} energía/min`} />}
         <Row label="Piso" value={room.floor} />
       </div>
+
+      <ProductionSection room={room} />
+      <WorkersSection room={room} />
 
       <div className="flex gap-2">
         {def.maxLevel > 1 && (
           <ActionButton
             tone="primary"
-            onClick={() => upgrade(room.id)}
-            disabled={!upCheck.ok || upCost === null || codos < upCost}
+            onClick={() => state.upgradeRoom(room.id)}
+            disabled={!upCheck.ok || upCost === null || state.resources.codos < upCost}
             title={upCheck.ok ? undefined : upCheck.reason}
           >
             <ArrowBigUp size={16} />
@@ -92,7 +244,7 @@ function RoomDetails({ room }: { room: Room }) {
         )}
         {def.demolishable &&
           (confirming ? (
-            <ActionButton tone="danger" onClick={() => demolish(room.id)}>
+            <ActionButton tone="danger" onClick={() => state.demolishRoom(room.id)}>
               ¿Seguro? +{demolishRefund(room)}
             </ActionButton>
           ) : (

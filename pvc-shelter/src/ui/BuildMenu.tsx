@@ -27,7 +27,7 @@ export function BuildMenu() {
           </button>
         </div>
       )}
-      <div className="flex items-stretch gap-2 overflow-x-auto px-3 py-2 [scrollbar-width:none]">
+      <div className="flex items-stretch gap-2 overflow-x-auto px-3 py-2 scrollbar-none">
         <div className="hidden items-center gap-1 pr-1 text-xs font-bold uppercase tracking-wider text-pvc/50 sm:flex">
           <Hammer size={14} /> Construir
         </div>

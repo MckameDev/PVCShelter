@@ -110,7 +110,8 @@ export function createInitialGrid(seed: number, floors = GRID_FLOORS, cols = GRI
 // Conectividad
 // ---------------------------------------------------------------------------
 
-function neighborIds(grid: GridState, occ: Occupancy, room: Room): string[] {
+/** Salas directamente conectadas (lados en el mismo piso; arriba/abajo entre ascensores). */
+export function roomNeighborIds(grid: GridState, occ: Occupancy, room: Room): string[] {
   const w = roomWidth(room);
   const ids = [roomIdAt(grid, occ, room.floor, room.col - 1), roomIdAt(grid, occ, room.floor, room.col + w)];
   if (room.type === 'elevator') {
@@ -134,7 +135,7 @@ export function getConnectedRoomIds(grid: GridState, excludeRoomId?: string): Se
   visited.add(entrance.id);
   while (queue.length > 0) {
     const room = grid.rooms[queue.shift()!];
-    for (const id of neighborIds(grid, occ, room)) {
+    for (const id of roomNeighborIds(grid, occ, room)) {
       if (!visited.has(id)) {
         visited.add(id);
         queue.push(id);
@@ -199,6 +200,8 @@ export interface RoomChange {
   grid: GridState;
   /** Id de la sala resultante (puede ser la sala fusionada). */
   roomId: string;
+  /** Salas que desaparecieron al fusionarse con `roomId`. */
+  absorbedIds: string[];
 }
 
 export function placeRoom(grid: GridState, type: RoomType, floor: number, col: number): Result<RoomChange> {
@@ -227,7 +230,7 @@ function canMergeWith(a: Room, b: Room | undefined): b is Room {
  */
 export function mergeRoom(grid: GridState, roomId: string): RoomChange {
   const room = grid.rooms[roomId];
-  if (!room || !ROOM_DEFS[room.type].mergeable) return { grid, roomId };
+  if (!room || !ROOM_DEFS[room.type].mergeable) return { grid, roomId, absorbedIds: [] };
 
   const occ = buildOccupancy(grid);
   const leftId = roomIdAt(grid, occ, room.floor, room.col - 1);
@@ -248,7 +251,7 @@ export function mergeRoom(grid: GridState, roomId: string): RoomChange {
       group = withLeft ?? withRight;
     }
   }
-  if (!group) return { grid, roomId };
+  if (!group) return { grid, roomId, absorbedIds: [] };
 
   const merged: Room = {
     ...room,
@@ -258,7 +261,8 @@ export function mergeRoom(grid: GridState, roomId: string): RoomChange {
   const rooms = { ...grid.rooms };
   for (const r of group) delete rooms[r.id];
   rooms[roomId] = merged;
-  return { grid: { ...grid, rooms }, roomId };
+  const absorbedIds = group.filter((r) => r.id !== roomId).map((r) => r.id);
+  return { grid: { ...grid, rooms }, roomId, absorbedIds };
 }
 
 // ---------------------------------------------------------------------------

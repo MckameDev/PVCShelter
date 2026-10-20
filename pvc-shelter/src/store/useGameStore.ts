@@ -1,8 +1,12 @@
 import { create } from 'zustand';
-import { STARTING_RESOURCES } from '../core/config';
+import * as Bunker from '../core/Bunker';
+import { assignDweller } from '../core/Dwellers';
 import { buildCost, demolishRefund, rockClearCost, upgradeCost } from '../core/Economy';
 import * as Grid from '../core/GridManager';
-import type { GridState, RoomType } from '../core/types';
+import { collectResource, RESOURCE_NAMES, rushRoom } from '../core/Production';
+import { advance } from '../core/Simulation';
+import type { SimEvent } from '../core/Simulation';
+import type { GameData, Rng, RoomType, VitalResource } from '../core/types';
 
 export type Selection = { kind: 'room'; id: string } | { kind: 'rock'; id: string } | null;
 
@@ -12,22 +16,17 @@ export interface Notice {
   tone: 'error' | 'success' | 'info';
 }
 
-export interface Resources {
-  /** Codos de PVC: moneda principal. */
-  codos: number;
-  /** Rollos de Cinta: moneda premium para acelerar procesos. */
-  cinta: number;
-}
-
-interface GameState {
-  grid: GridState;
-  resources: Resources;
+interface UiState {
   /** Tipo de sala en modo construcción, o null si no se está construyendo. */
   buildType: RoomType | null;
   selection: Selection;
   notice: Notice | null;
+  dwellersOpen: boolean;
+}
 
+interface Actions {
   newGame: (seed?: number) => void;
+  tick: (seconds: number) => void;
   startBuild: (type: RoomType) => void;
   cancelBuild: () => void;
   build: (floor: number, col: number) => boolean;
@@ -35,38 +34,80 @@ interface GameState {
   upgradeRoom: (roomId: string) => boolean;
   demolishRoom: (roomId: string) => boolean;
   clearRock: (rockId: string) => boolean;
+  assign: (dwellerId: string, roomId: string | null) => boolean;
+  collect: (resource: VitalResource) => boolean;
+  rush: (roomId: string) => boolean;
+  setDwellersOpen: (open: boolean) => void;
   dismissNotice: () => void;
 }
+
+// GameData se guarda "aplanado" en el store para que los componentes se
+// suscriban a porciones concretas (s.resources, s.grid...) sin re-render global.
+export type GameState = GameData & UiState & Actions;
+
+/** Aleatoriedad de las acciones del jugador. La simulación por ticks es determinista. */
+const rng: Rng = Math.random;
 
 let noticeSeq = 0;
 const notice = (text: string, tone: Notice['tone']): Notice => ({ id: ++noticeSeq, text, tone });
 
 const randomSeed = () => Math.floor(Math.random() * 2 ** 31);
 
-const initialState = (seed: number) => ({
-  grid: Grid.createInitialGrid(seed),
-  resources: { ...STARTING_RESOURCES },
+const pickData = (s: GameState): GameData => ({
+  grid: s.grid,
+  resources: s.resources,
+  dwellers: s.dwellers,
+  runtime: s.runtime,
+  nextDwellerId: s.nextDwellerId,
+  time: s.time,
+});
+
+const freshState = (seed: number): GameData & UiState => ({
+  ...Bunker.createNewGame(seed),
   buildType: null,
   selection: null,
   notice: null,
+  dwellersOpen: false,
 });
 
+const INCIDENT_NAMES = { fire: 'el incendio', roaches: 'la plaga de cucarachas' } as const;
+
+/** Elige el evento más importante del tick para mostrarlo (las muertes primero). */
+function eventNotice(events: SimEvent[]): Notice | null {
+  const death = events.find((e) => e.type === 'dweller-died');
+  if (death) return notice(`${death.name} ha muerto.`, 'error');
+  const shortage = events.find((e) => e.type === 'shortage');
+  if (shortage) return notice(`¡Se acabó la ${RESOURCE_NAMES[shortage.resource]}!`, 'error');
+  const resolved = events.find((e) => e.type === 'incident-resolved');
+  if (resolved) return notice(`Controlaron ${INCIDENT_NAMES[resolved.kind]}. +${resolved.codos} Codos.`, 'success');
+  return null;
+}
+
 export const useGameStore = create<GameState>()((set, get) => {
-  /** Intenta pagar; si no alcanza, publica un aviso y devuelve false. */
-  const canAfford = (cost: number): boolean => {
-    if (get().resources.codos >= cost) return true;
-    set({ notice: notice(`Faltan Codos de PVC (necesitas ${cost}).`, 'error') });
-    return false;
-  };
   const fail = (reason: string) => {
     set({ notice: notice(reason, 'error') });
     return false;
   };
+  /** Valida que alcancen los Codos; si no, publica un aviso. */
+  const canAfford = (cost: number): boolean => {
+    if (get().resources.codos >= cost) return true;
+    return fail(`Faltan Codos de PVC (necesitas ${cost}).`);
+  };
+  const spend = (data: GameData, cost: number): GameData => ({
+    ...data,
+    resources: { ...data.resources, codos: data.resources.codos - cost },
+  });
 
   return {
-    ...initialState(randomSeed()),
+    ...freshState(randomSeed()),
 
-    newGame: (seed = randomSeed()) => set(initialState(seed)),
+    newGame: (seed = randomSeed()) => set(freshState(seed)),
+
+    tick: (seconds) => {
+      const { data, events } = advance(pickData(get()), seconds);
+      const n = eventNotice(events);
+      set(n ? { ...data, notice: n } : data);
+    },
 
     startBuild: (type) =>
       set((s) => ({ buildType: s.buildType === type ? null : type, selection: null })),
@@ -74,20 +115,20 @@ export const useGameStore = create<GameState>()((set, get) => {
     cancelBuild: () => set({ buildType: null }),
 
     build: (floor, col) => {
-      const { grid, buildType, resources } = get();
+      const state = get();
+      const { buildType } = state;
       if (!buildType) return false;
 
       // Validar posición antes que dinero: el mensaje de error es más útil.
-      const check = Grid.canPlaceRoom(grid, buildType, floor, col);
+      const check = Grid.canPlaceRoom(state.grid, buildType, floor, col);
       if (!check.ok) return fail(check.reason);
-      const cost = buildCost(grid, buildType);
+      const cost = buildCost(state.grid, buildType);
       if (!canAfford(cost)) return false;
 
-      const res = Grid.placeRoom(grid, buildType, floor, col);
+      const res = Grid.placeRoom(state.grid, buildType, floor, col);
       if (!res.ok) return fail(res.reason);
       set({
-        grid: res.value.grid,
-        resources: { ...resources, codos: resources.codos - cost },
+        ...spend(Bunker.applyRoomChange(pickData(state), res.value), cost),
         buildType: null,
         selection: { kind: 'room', id: res.value.roomId },
       });
@@ -97,33 +138,33 @@ export const useGameStore = create<GameState>()((set, get) => {
     select: (selection) => set({ selection }),
 
     upgradeRoom: (roomId) => {
-      const { grid, resources } = get();
-      const check = Grid.canUpgradeRoom(grid, roomId);
+      const state = get();
+      const check = Grid.canUpgradeRoom(state.grid, roomId);
       if (!check.ok) return fail(check.reason);
       const cost = upgradeCost(check.value);
       if (cost === null) return fail('La sala ya está al nivel máximo.');
       if (!canAfford(cost)) return false;
 
-      const res = Grid.upgradeRoom(grid, roomId);
+      const res = Grid.upgradeRoom(state.grid, roomId);
       if (!res.ok) return fail(res.reason);
+      const data = spend(Bunker.applyRoomChange(pickData(state), res.value), cost);
       set({
-        grid: res.value.grid,
-        resources: { ...resources, codos: resources.codos - cost },
+        ...data,
         selection: { kind: 'room', id: res.value.roomId },
-        notice: notice(`Sala mejorada a nivel ${res.value.grid.rooms[res.value.roomId].level}.`, 'success'),
+        notice: notice(`Sala mejorada a nivel ${data.grid.rooms[res.value.roomId].level}.`, 'success'),
       });
       return true;
     },
 
     demolishRoom: (roomId) => {
-      const { grid, resources } = get();
-      const room = grid.rooms[roomId];
-      const res = Grid.demolishRoom(grid, roomId);
-      if (!res.ok || !room) return fail(res.ok ? 'La sala no existe.' : res.reason);
+      const state = get();
+      const room = state.grid.rooms[roomId];
+      if (!room) return fail('La sala no existe.');
+      const res = Bunker.demolish(pickData(state), roomId);
+      if (!res.ok) return fail(res.reason);
       const refund = demolishRefund(room);
       set({
-        grid: res.value,
-        resources: { ...resources, codos: resources.codos + refund },
+        ...spend(res.value, -refund),
         selection: null,
         notice: notice(`Sala demolida. Recuperas ${refund} Codos.`, 'info'),
       });
@@ -131,21 +172,47 @@ export const useGameStore = create<GameState>()((set, get) => {
     },
 
     clearRock: (rockId) => {
-      const { grid, resources } = get();
-      const rock = grid.rocks[rockId];
+      const state = get();
+      const rock = state.grid.rocks[rockId];
       if (!rock) return fail('La roca no existe.');
       const cost = rockClearCost(rock);
       if (!canAfford(cost)) return false;
 
-      const res = Grid.clearRock(grid, rockId);
+      const res = Grid.clearRock(state.grid, rockId);
       if (!res.ok) return fail(res.reason);
-      set({
-        grid: res.value,
-        resources: { ...resources, codos: resources.codos - cost },
-        selection: null,
-      });
+      set({ ...spend({ ...pickData(state), grid: res.value }, cost), selection: null });
       return true;
     },
+
+    assign: (dwellerId, roomId) => {
+      const res = assignDweller(pickData(get()), dwellerId, roomId);
+      if (!res.ok) return fail(res.reason);
+      set({ dwellers: res.value.dwellers });
+      return true;
+    },
+
+    collect: (resource) => {
+      const res = collectResource(pickData(get()), resource, rng);
+      if (!res.ok) return fail(res.reason);
+      const { data, summary } = res.value;
+      const parts = [`+${summary.stored} ${RESOURCE_NAMES[resource]}`];
+      if (summary.codos > 0) parts.push(`+${summary.codos} Codos`);
+      set({ ...data, notice: notice(parts.join(' · '), 'success') });
+      return true;
+    },
+
+    rush: (roomId) => {
+      const res = rushRoom(pickData(get()), roomId, rng);
+      if (!res.ok) return fail(res.reason);
+      const { data, outcome } = res.value;
+      const text = outcome.success
+        ? `¡Exprés exitoso! +${outcome.stored} ${RESOURCE_NAMES[outcome.resource]} · +${outcome.codos} Codos`
+        : `¡El Exprés falló! Se desató ${INCIDENT_NAMES[outcome.incident]}.`;
+      set({ ...data, notice: notice(text, outcome.success ? 'success' : 'error') });
+      return true;
+    },
+
+    setDwellersOpen: (open) => set({ dwellersOpen: open }),
 
     dismissNotice: () => set({ notice: null }),
   };

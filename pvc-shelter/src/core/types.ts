@@ -40,6 +40,74 @@ export interface GridState {
   seed: number;
 }
 
+// ---------------------------------------------------------------------------
+// Sprint 2: recursos, habitantes y producción
+// ---------------------------------------------------------------------------
+
+/** Recursos vitales con stock limitado por almacenamiento. */
+export type VitalResource = 'energy' | 'food' | 'water';
+
+export interface Resources {
+  /** Codos de PVC: moneda principal. */
+  codos: number;
+  /** Rollos de Cinta: moneda premium para acelerar procesos. */
+  cinta: number;
+  energy: number;
+  food: number;
+  water: number;
+}
+
+export type PatronStats = Record<PatronStat, number>;
+
+export interface Dweller {
+  id: string;
+  name: string;
+  sex: 'M' | 'F';
+  stats: PatronStats;
+  level: number;
+  /** XP acumulada; la subida de nivel llega en el Sprint 3. */
+  xp: number;
+  hp: number;
+  maxHp: number;
+  /** Daño por agua contaminada: reduce el HP máximo efectivo (barra roja). */
+  intox: number;
+  roomId: string | null;
+  alive: boolean;
+}
+
+export type IncidentKind = 'fire' | 'roaches';
+
+export interface Incident {
+  kind: IncidentKind;
+  hp: number;
+  maxHp: number;
+}
+
+/** Estado dinámico de una sala (separado de Room para no mezclarlo con la geometría). */
+export interface RoomRuntime {
+  /** Segundos de producción acumulados en el ciclo actual. */
+  progress: number;
+  /** Ciclo completo esperando a que el jugador recolecte. */
+  ready: boolean;
+  /** Usos recientes del modo Exprés; sube el % de fallo y decae con el tiempo. */
+  rushHeat: number;
+  powered: boolean;
+  incident: Incident | null;
+}
+
+/** Estado completo y serializable de una partida. */
+export interface GameData {
+  grid: GridState;
+  resources: Resources;
+  dwellers: Record<string, Dweller>;
+  runtime: Record<string, RoomRuntime>;
+  nextDwellerId: number;
+  /** Segundos simulados desde el inicio de la partida. */
+  time: number;
+}
+
+export type Rng = () => number;
+
 export type Result<T> = { ok: true; value: T } | { ok: false; reason: string };
 
 export const ok = <T>(value: T): Result<T> => ({ ok: true, value });

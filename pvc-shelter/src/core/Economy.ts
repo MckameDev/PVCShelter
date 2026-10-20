@@ -1,5 +1,12 @@
-import { DWELLERS_PER_BLOCK, LEVEL_EFFICIENCY, MERGE_EFFICIENCY, ROOM_DEFS } from './config';
-import type { GridState, Rock, Room, RoomType } from './types';
+import {
+  BASE_STORAGE,
+  DWELLERS_PER_BLOCK,
+  LEVEL_EFFICIENCY,
+  MERGE_EFFICIENCY,
+  ROOM_DEFS,
+  STORAGE_PER_BLOCK,
+} from './config';
+import type { GridState, Rock, Room, RoomType, VitalResource } from './types';
 
 // Fórmulas de costos y rendimiento. Separadas de GridManager para que el
 // Sprint 2 (economía) pueda crecer aquí sin tocar las reglas espaciales.
@@ -42,4 +49,15 @@ export function roomCapacity(room: Room): number {
 
 export function roomEfficiency(room: Room): number {
   return MERGE_EFFICIENCY[room.blocks] * LEVEL_EFFICIENCY[room.level];
+}
+
+/** Tope de almacenamiento: base + cada bloque que produce ese recurso (más si está mejorado). */
+export function storageCap(grid: GridState, resource: VitalResource): number {
+  let cap = BASE_STORAGE;
+  for (const room of Object.values(grid.rooms)) {
+    if (ROOM_DEFS[room.type].produces === resource) {
+      cap += STORAGE_PER_BLOCK * room.blocks * LEVEL_EFFICIENCY[room.level];
+    }
+  }
+  return cap;
 }

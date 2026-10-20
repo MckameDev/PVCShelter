@@ -1,9 +1,13 @@
 import { Application, Container, Graphics, Text } from 'pixi.js';
-import { buildCost } from '../core/Economy';
+import { ROOM_DEFS } from '../core/config';
+import { dwellersInRoom } from '../core/Dwellers';
+import { buildCost, roomCapacity } from '../core/Economy';
 import { findRockAt, findRoomAt, getValidPlacements, roomWidth } from '../core/GridManager';
 import type { Placement } from '../core/GridManager';
 import { useGameStore } from '../store/useGameStore';
+import { cycleTime, getRuntime } from '../core/Production';
 import { createRockView, createRoomView } from './RoomSprite';
+import { drawRoomStatus, READY_ICON_RADIUS, readyIconCenter } from './StatusSprite';
 import { createTerrainView, worldBounds } from './TerrainSprite';
 import type { WorldBounds } from './TerrainSprite';
 import { CELL_W, DRAG_THRESHOLD, FLOOR_H, MAX_ZOOM, MIN_ZOOM, TOP_BAR_H } from './layout';
@@ -28,6 +32,8 @@ export class BunkerStage {
   private readonly terrainLayer = new Container();
   private readonly rockLayer = new Container();
   private readonly roomLayer = new Container();
+  /** Estado dinámico (progreso, incidentes, energía), redibujado cada frame. */
+  private readonly statusLayer = new Graphics();
   private readonly overlay = new Graphics();
   private readonly ghostLabel = new Text({
     text: '',
@@ -68,7 +74,7 @@ export class BunkerStage {
     app.canvas.style.touchAction = 'none';
     app.canvas.style.display = 'block';
 
-    this.world.addChild(this.terrainLayer, this.rockLayer, this.roomLayer, this.overlay, this.ghostLabel);
+    this.world.addChild(this.terrainLayer, this.rockLayer, this.roomLayer, this.statusLayer, this.overlay, this.ghostLabel);
     this.ghostLabel.anchor.set(0.5);
     this.ghostLabel.visible = false;
     app.stage.addChild(this.world);
@@ -76,6 +82,7 @@ export class BunkerStage {
     this.bindInput(app.canvas);
     app.renderer.on('resize', this.handleResize);
 
+    app.ticker.add(this.drawStatus);
     this.sync(useGameStore.getState(), null);
     this.unsubscribe = useGameStore.subscribe((state, prev) => this.sync(state, prev));
     this.focusEntrance();
@@ -343,7 +350,11 @@ export class BunkerStage {
   }
 
   private updateHover(screen: Point): void {
-    if (this.placements.length === 0 || !this.app) return;
+    if (!this.app) return;
+    if (this.placements.length === 0) {
+      this.app.canvas.style.cursor = this.pickReadyIcon(this.screenToWorld(screen)) ? 'pointer' : '';
+      return;
+    }
     const next = this.pickPlacement(this.screenToWorld(screen));
     if (next !== this.hovered) {
       this.hovered = next;
@@ -352,9 +363,43 @@ export class BunkerStage {
     }
   }
 
+  private readonly drawStatus = () => {
+    const state = useGameStore.getState();
+    const g = this.statusLayer.clear();
+    const now = performance.now();
+    for (const room of Object.values(state.grid.rooms)) {
+      const capacity = roomCapacity(room);
+      if (capacity === 0) continue;
+      const workers = dwellersInRoom(state, room.id);
+      drawRoomStatus(
+        g,
+        { room, runtime: getRuntime(state, room.id), workers: workers.length, capacity, cycle: cycleTime(room, workers) },
+        now,
+      );
+    }
+  };
+
+  /** Si el punto cae sobre el icono de una sala lista, devuelve el recurso a recolectar. */
+  private pickReadyIcon(world: Point) {
+    const state = useGameStore.getState();
+    const room = findRoomAt(state.grid, Math.floor(world.y / FLOOR_H), Math.floor(world.x / CELL_W));
+    const resource = room ? ROOM_DEFS[room.type].produces : null;
+    if (!room || !resource || !getRuntime(state, room.id).ready) return null;
+    const c = readyIconCenter(room);
+    return Math.hypot(world.x - c.x, world.y - c.y) <= READY_ICON_RADIUS + 8 ? resource : null;
+  }
+
   private handleTap(screen: Point): void {
     const state = useGameStore.getState();
     const world = this.screenToWorld(screen);
+
+    if (!state.buildType) {
+      const resource = this.pickReadyIcon(world);
+      if (resource) {
+        state.collect(resource);
+        return;
+      }
+    }
 
     if (state.buildType) {
       const placement = this.pickPlacement(world);
