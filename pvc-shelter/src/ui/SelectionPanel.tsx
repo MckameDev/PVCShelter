@@ -1,10 +1,19 @@
-import { ArrowBigUp, Baby, Flame, Heart, Mountain, Pickaxe, Trash, UserMinus, Wrench, X, Zap, ZapOff } from 'lucide-react';
+import { ArrowBigUp, Baby, Flame, Heart, Mountain, Pickaxe, Radio, Trash, UserMinus, Wrench, X, Zap, ZapOff } from 'lucide-react';
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { canDemolish } from '../core/Bunker';
-import { COURTSHIP_SECONDS, LEVEL_EFFICIENCY, POPULATION_PER_LIVING_BLOCK, ROOM_DEFS } from '../core/config';
-import { dwellersInRoom, isAdult, PATRON_NAMES } from '../core/Dwellers';
+import {
+  COURTSHIP_SECONDS,
+  ITEM_CAPACITY_PER_STORAGE_BLOCK,
+  LEVEL_EFFICIENCY,
+  MAX_BASE_STAT,
+  POPULATION_PER_BARRACKS_BLOCK,
+  POPULATION_PER_LIVING_BLOCK,
+  ROOM_DEFS,
+} from '../core/config';
+import { dwellersInRoom, globalHappiness, isAdult, PATRON_NAMES } from '../core/Dwellers';
 import { demolishRefund, rockClearCost, roomCapacity, roomEfficiency, upgradeCost } from '../core/Economy';
+import { radioHappinessBonus, recruitChance, trainingSeconds } from '../core/LifeCycle';
 import { canUpgradeRoom } from '../core/GridManager';
 import { canRush, cycleTime, cycleYield, getRuntime, RESOURCE_NAMES } from '../core/Production';
 import type { Rock, Room } from '../core/types';
@@ -242,6 +251,75 @@ function LivingSection({ room }: { room: Room }) {
   );
 }
 
+/** Progreso de cada habitante hacia el siguiente punto del stat que entrena la sala. */
+function TrainingSection({ room }: { room: Room }) {
+  const dwellers = useGameStore((s) => s.dwellers);
+  // Lectura directa: getRuntime() crea un objeto nuevo si falta y el selector re-renderizaría en bucle.
+  const powered = useGameStore((s) => s.runtime[room.id]?.powered ?? true);
+  const stat = ROOM_DEFS[room.type].trains;
+  if (!stat) return null;
+  const trainees = dwellersInRoom({ dwellers }, room.id);
+
+  return (
+    <div className="mb-3 space-y-1.5 rounded-lg bg-black/30 p-2 text-sm">
+      <p className="text-xs text-pvc/70">
+        Entrena {PATRON_NAMES[stat]} ({stat}) hasta {MAX_BASE_STAT}. Más nivel de sala = entrenamiento más rápido.
+      </p>
+      {!powered && <p className="text-xs text-red-300">Sin energía: el entrenamiento está en pausa.</p>}
+      {trainees.length === 0 && <p className="text-xs text-pvc/60">Asigna habitantes para entrenar.</p>}
+      {trainees.map((d) => {
+        const maxed = d.stats[stat] >= MAX_BASE_STAT;
+        const need = trainingSeconds(d.stats[stat], room);
+        return (
+          <div key={d.id}>
+            <div className="flex justify-between text-xs">
+              <span>
+                {d.name}: {stat} {d.stats[stat]}
+                {!maxed && ` → ${d.stats[stat] + 1}`}
+              </span>
+              <span className="tabular-nums text-pvc/60">{maxed ? 'Máximo' : `${Math.ceil(need - d.training)} s`}</span>
+            </div>
+            <div className="mt-0.5 h-1.5 overflow-hidden rounded-full bg-black/60">
+              <div className="h-full bg-tape" style={{ width: `${maxed ? 100 : (d.training / need) * 100}%` }} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Antena: progreso de la transmisión, probabilidad de atraer a alguien y bono de felicidad. */
+function RadioSection({ room }: { room: Room }) {
+  const state = useGameStore();
+  if (room.type !== 'radio') return null;
+  const runtime = getRuntime(state, room.id);
+  const workers = dwellersInRoom(state, room.id);
+  const cycle = cycleTime(room, workers, globalHappiness(state));
+  const bonus = radioHappinessBonus(Object.values(state.grid.rooms), state.runtime, (id) => dwellersInRoom(state, id).length > 0);
+
+  return (
+    <div className="mb-3 space-y-1.5 rounded-lg bg-black/30 p-2 text-sm">
+      <div className="flex items-center gap-1 text-xs text-pvc/70">
+        <Radio size={12} /> Felicidad global de las radios: +{Math.round(bonus)} puntos
+      </div>
+      {cycle === null ? (
+        <p className="text-xs text-pvc/60">Asigna habitantes (Optimismo) para transmitir.</p>
+      ) : (
+        <div>
+          <div className="flex justify-between text-xs text-pvc/70">
+            <span>Transmitiendo · {Math.round(recruitChance(workers) * 100)}% de atraer a alguien</span>
+            <span className="tabular-nums">{runtime.powered ? `${Math.ceil(cycle - runtime.progress)} s` : 'Sin energía'}</span>
+          </div>
+          <div className="mt-1 h-2 overflow-hidden rounded-full bg-black/60">
+            <div className="h-full bg-purple-400" style={{ width: `${Math.min(100, (runtime.progress / cycle) * 100)}%` }} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RoomDetails({ room }: { room: Room }) {
   const state = useGameStore();
   // Se reinicia al cambiar de sala porque el padre usa key={room.id}.
@@ -262,11 +340,26 @@ function RoomDetails({ room }: { room: Room }) {
         {def.stat && <Row label="Atributo" value={`${PATRON_NAMES[def.stat]} (${def.stat})`} />}
         {def.produces && <Row label="Eficiencia" value={`×${roomEfficiency(room).toFixed(1)}`} />}
         {def.energyDraw > 0 && <Row label="Consumo" value={`${(def.energyDraw * room.blocks * 60).toFixed(1)} energía/min`} />}
+        {room.type === 'storage' && (
+          <Row
+            label="Inventario"
+            value={`+${Math.floor(ITEM_CAPACITY_PER_STORAGE_BLOCK * room.blocks * LEVEL_EFFICIENCY[room.level])} plazas`}
+          />
+        )}
+        {room.type === 'barracks' && (
+          <Row
+            label="Población"
+            value={`+${Math.floor(POPULATION_PER_BARRACKS_BLOCK * room.blocks * LEVEL_EFFICIENCY[room.level])} plazas`}
+          />
+        )}
         <Row label="Piso" value={room.floor} />
       </div>
 
       <ProductionSection room={room} />
       <LivingSection room={room} />
+      <TrainingSection room={room} />
+      <RadioSection room={room} />
+
       <WorkersSection room={room} />
 
       <div className="flex gap-2">

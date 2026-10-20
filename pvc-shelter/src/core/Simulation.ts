@@ -14,11 +14,21 @@ import {
   WATER_PER_DWELLER,
   XP_PER_STAT_SECOND,
 } from './config';
-import { globalHappiness, populationCap } from './Dwellers';
+import { createDweller, globalHappiness, livingCount, populationCap } from './Dwellers';
 import { buildOccupancy, roomNeighborIds } from './GridManager';
-import { applyLevelUps, happinessTarget, updateCourtship, updateHappiness, updatePregnanciesAndGrowth } from './LifeCycle';
+import {
+  applyLevelUps,
+  happinessTarget,
+  radioHappinessBonus,
+  recruitChance,
+  updateCourtship,
+  updateHappiness,
+  updatePregnanciesAndGrowth,
+  updateTraining,
+} from './LifeCycle';
 import type { LifeEvent } from './LifeCycle';
 import { cycleTime, getRuntime } from './Production';
+import { createRng, hashString } from './random';
 import type { Dweller, GameData, GridState, IncidentKind, Room, RoomRuntime } from './types';
 
 // Simulación por ticks. Función pura y determinista (sin RNG ni reloj): el
@@ -220,6 +230,35 @@ export function simulate(data: GameData, dt: number): { data: GameData; events: 
     for (const w of workers) dwellers[w.id].xp += w.stats[stat] * XP_PER_STAT_SECOND * dt;
   }
 
+  // 5b. Entrenamiento y radio (salas con energía y sin incidentes).
+  let nextId = data.nextDwellerId;
+  for (const room of Object.values(grid.rooms)) {
+    const rt = runtime[room.id];
+    if (!rt.powered || rt.incident) continue;
+    const occupants = (workersByRoom.get(room.id) ?? []).map((w) => dwellers[w.id]).filter((d) => d.alive);
+
+    if (ROOM_DEFS[room.type].trains) updateTraining(room, occupants, dt, life);
+
+    if (room.type === 'radio') {
+      const t = cycleTime(room, occupants, happiness);
+      if (t === null) continue;
+      const progress = rt.progress + dt;
+      if (progress < t) {
+        runtime[room.id] = { ...rt, progress };
+        continue;
+      }
+      runtime[room.id] = { ...rt, progress: 0 };
+      // RNG derivado del estado: misma partida, mismo resultado.
+      const rng = createRng((grid.seed ^ hashString(`${room.id}@${data.time}`)) >>> 0);
+      if (rng() < recruitChance(occupants) && livingCount({ dwellers }) < populationCap(grid)) {
+        const id = `dweller-${nextId++}`;
+        dwellers[id] = createDweller(rng, id);
+        life.push({ type: 'recruited', name: dwellers[id].name });
+      }
+    }
+  }
+  const radioBonus = radioHappinessBonus(Object.values(grid.rooms), runtime, (id) => (workersByRoom.get(id)?.length ?? 0) > 0);
+
   // 6. Niveles y felicidad individual.
   for (const d of Object.values(dwellers)) {
     if (!d.alive) continue;
@@ -230,6 +269,7 @@ export function simulate(data: GameData, dt: number): { data: GameData; events: 
       runtime: room ? runtime[room.id] : undefined,
       foodShortage: food.shortage > 0,
       waterShortage: water.shortage > 0,
+      radioBonus,
     });
     updateHappiness(d, target, dt);
   }
@@ -244,7 +284,8 @@ export function simulate(data: GameData, dt: number): { data: GameData; events: 
     // Un cortejo solo sigue vivo dentro de una Sala de Descanso.
     if (d.courtship && (!d.roomId || grid.rooms[d.roomId]?.type !== 'living')) d.courtship = null;
   }
-  const nextDwellerId = updatePregnanciesAndGrowth(dwellers, grid, populationCap(grid), data.nextDwellerId, dt, life);
+  const nextDwellerId = updatePregnanciesAndGrowth(dwellers, grid, populationCap(grid), nextId, dt, life);
+
 
   return {
     data: { ...data, resources, runtime, dwellers, nextDwellerId, time: data.time + dt },

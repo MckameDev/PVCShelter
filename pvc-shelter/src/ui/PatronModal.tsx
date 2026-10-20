@@ -1,7 +1,8 @@
-import { Baby, Heart, Skull, Smile, X } from 'lucide-react';
+import { Baby, Bandage, FlaskConical, Heart, Skull, Smile, X } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { CHILDHOOD_SECONDS, COURTSHIP_SECONDS, PREGNANCY_SECONDS, ROOM_DEFS } from '../core/config';
 import { effectiveMaxHp, isAdult, PATRON_KEYS, PATRON_NAMES, xpToNextLevel } from '../core/Dwellers';
+import { canApplyMed } from '../core/Health';
 import { useGameStore } from '../store/useGameStore';
 import { HealthBar } from './HealthBar';
 
@@ -23,6 +24,9 @@ export function PatronModal() {
   const rooms = useGameStore((s) => s.grid.rooms);
   const dwellers = useGameStore((s) => s.dwellers);
   const close = useGameStore((s) => s.openDweller);
+  const heal = useGameStore((s) => s.heal);
+  const meds = useGameStore((s) => s.resources);
+  const game = useGameStore();
   const select = useGameStore((s) => s.select);
 
   if (!id || !dweller) return null;
@@ -96,7 +100,33 @@ export function PatronModal() {
           </div>
         )}
 
+        {dweller.alive && (
+          <div className="mb-3 flex gap-2">
+            {(
+              [
+                { med: 'stimpaks', label: 'Venda', Icon: Bandage, color: 'border-red-400/70 hover:bg-red-500/20' },
+                { med: 'radaways', label: 'Desintoxicante', Icon: FlaskConical, color: 'border-orange-400/70 hover:bg-orange-500/20' },
+              ] as const
+            ).map(({ med, label, Icon, color }) => {
+              const check = canApplyMed(game, dweller.id, med);
+              return (
+                <button
+                  key={med}
+                  type="button"
+                  onClick={() => heal(dweller.id, med)}
+                  disabled={!check.ok}
+                  title={check.ok ? undefined : check.reason}
+                  className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg border-2 py-1.5 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-40 ${color}`}
+                >
+                  <Icon size={14} /> {label} ({meds[med]})
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {/* Estados del ciclo de vida */}
+
         <div className="mb-3 space-y-2">
           {!adult && (
             <Meter

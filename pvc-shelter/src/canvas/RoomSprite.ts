@@ -106,10 +106,107 @@ function drawDecor(g: Graphics, type: RoomType, x0: number, h: number, accent: n
       for (let y = 18; y < h - 18; y += 12) g.rect(x0 + 6, y, 8, 6).fill(accent);
       break;
     }
+    case 'medbay': {
+      // Dos camillas y una cruz pintada en la lona
+      for (const bx of [x0 + 12, x0 + 74]) {
+        g.rect(bx, floorY - 14, 50, 6).fill(0xffffff);
+        g.rect(bx + 4, floorY - 8, 3, 8).fill(0x555555).rect(bx + 43, floorY - 8, 3, 8).fill(0x555555);
+      }
+      g.rect(x0 + 64, 26, 8, 22).fill(accent).rect(x0 + 57, 33, 22, 8).fill(accent);
+      break;
+    }
+    case 'detox': {
+      // Tanques de depuración con líquido verde
+      for (let i = 0; i < 3; i++) {
+        const x = x0 + 14 + i * 40;
+        g.roundRect(x, floorY - 46, 28, 46, 6).fill(0x2a2a2a);
+        g.roundRect(x + 3, floorY - 30, 22, 27, 4).fill(accent);
+        g.rect(x + 12, 14, 4, 18).fill(PVC);
+      }
+      break;
+    }
+    case 'storage': {
+      // Cajones de madera apilados
+      for (const [cx, cy] of [[14, 0], [44, 0], [74, 0], [104, 0], [29, 1], [89, 1]] as const) {
+        const x = x0 + cx;
+        const y = floorY - 26 - cy * 26;
+        g.rect(x, y, 26, 26).fill(0x8a6a3e).stroke({ width: 2, color: 0x4a3620 });
+        g.moveTo(x, y).lineTo(x + 26, y + 26).moveTo(x + 26, y).lineTo(x, y + 26).stroke({ width: 2, color: 0x4a3620 });
+      }
+      break;
+    }
+    case 'barracks': {
+      // Literas de tubo
+      for (const bx of [x0 + 12, x0 + 76]) {
+        g.rect(bx, floorY - 52, 4, 52).fill(PVC).rect(bx + 52, floorY - 52, 4, 52).fill(PVC);
+        g.rect(bx, floorY - 14, 56, 7).fill(0xcfc6b8);
+        g.rect(bx, floorY - 42, 56, 7).fill(0xcfc6b8);
+      }
+      break;
+    }
+    case 'radio': {
+      // Mástil con antena y altavoz hecho con un bidón
+      const mx = x0 + 100;
+      g.rect(mx, 14, 4, floorY - 14).fill(PVC);
+      for (let i = 0; i < 3; i++) g.moveTo(mx - 12 + i * 4, 18 + i * 10).lineTo(mx + 16 - i * 4, 18 + i * 10).stroke({ width: 2, color: PVC });
+      g.circle(mx + 2, 14, 4).fill(accent);
+      g.roundRect(x0 + 20, floorY - 40, 50, 40, 6).fill(0x2a2a2a);
+      g.circle(x0 + 45, floorY - 20, 13).fill(0x555555).circle(x0 + 45, floorY - 20, 6).fill(accent);
+      break;
+    }
+    case 'train-P': {
+      // Barra con bidones como pesas
+      g.rect(x0 + 24, floorY - 30, 96, 4).fill(0x999999);
+      for (const bx of [x0 + 18, x0 + 112]) g.roundRect(bx, floorY - 44, 14, 32, 4).fill(accent);
+      g.rect(x0 + 40, floorY - 8, 64, 8).fill(0x333333);
+      break;
+    }
+    case 'train-A': {
+      // Estantería de manuales
+      g.rect(x0 + 14, floorY - 56, 70, 56).fill(0x5c3a1f);
+      for (let row = 0; row < 3; row++) {
+        for (let i = 0; i < 6; i++) {
+          g.rect(x0 + 18 + i * 11, floorY - 52 + row * 18, 8, 14).fill([accent, 0xffffff, 0xf2c94c][(i + row) % 3]);
+        }
+      }
+      g.rect(x0 + 96, floorY - 22, 30, 4).fill(0x8a6a3e).rect(x0 + 108, floorY - 18, 4, 18).fill(0x8a6a3e);
+      break;
+    }
+    case 'train-T': {
+      // Cinta de correr de rodillos
+      g.roundRect(x0 + 20, floorY - 12, 100, 12, 6).fill(0x333333);
+      for (let x = x0 + 26; x < x0 + 116; x += 10) g.circle(x, floorY - 6, 3).fill(0x777777);
+      g.rect(x0 + 104, floorY - 46, 4, 36).fill(PVC).rect(x0 + 96, floorY - 46, 20, 4).fill(accent);
+      break;
+    }
+    case 'train-R': {
+      // Mesa de cartas
+      g.ellipse(x0 + 72, floorY - 24, 44, 8).fill(0x2f6b3a);
+      g.rect(x0 + 70, floorY - 20, 4, 20).fill(0x5c3a1f);
+      for (let i = 0; i < 4; i++) g.rect(x0 + 50 + i * 12, floorY - 30, 8, 11).fill(i % 2 ? accent : 0xffffff);
+      break;
+    }
+    case 'train-O': {
+      // Escenario de cajas con foco
+      g.rect(x0 + 16, floorY - 16, 112, 16).fill(0x8a6a3e);
+      g.poly([x0 + 72, 14, x0 + 40, floorY - 16, x0 + 104, floorY - 16]).fill({ color: accent, alpha: 0.25 });
+      g.circle(x0 + 72, 16, 6).fill(accent);
+      g.rect(x0 + 70, floorY - 40, 3, 24).fill(0x333333).circle(x0 + 71, floorY - 42, 4).fill(0x333333);
+      break;
+    }
+    case 'train-N': {
+      // Diana de lona
+      const cx = x0 + 100;
+      const cy = floorY - 34;
+      for (const [r, c] of [[22, 0xffffff], [16, accent], [10, 0xffffff], [5, accent]] as const) g.circle(cx, cy, r).fill(c);
+      g.rect(x0 + 20, floorY - 4, 40, 4).fill(0x8a6a3e);
+      break;
+    }
     case 'elevator':
       break;
   }
 }
+
 
 function drawElevator(g: Graphics, w: number, h: number, accent: number) {
   g.rect(0, 0, w, h).fill(WALL);

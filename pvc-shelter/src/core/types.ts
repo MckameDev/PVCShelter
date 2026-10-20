@@ -1,7 +1,22 @@
 // Tipos compartidos del núcleo. Todo es serializable a JSON (necesario para el
 // guardado en la nube del Sprint 8), por eso no hay clases ni Maps aquí.
 
-export type RoomType = 'entrance' | 'elevator' | 'power' | 'food' | 'water' | 'living';
+export type TrainingRoomType = 'train-P' | 'train-A' | 'train-T' | 'train-R' | 'train-O' | 'train-N';
+
+export type RoomType =
+  | 'entrance'
+  | 'elevator'
+  | 'power'
+  | 'food'
+  | 'water'
+  | 'living'
+  // Sprint 4
+  | 'medbay'
+  | 'detox'
+  | 'storage'
+  | 'barracks'
+  | 'radio'
+  | TrainingRoomType;
 
 /** Letra del sistema P.A.T.R.O.N. que usa una sala para producir. */
 export type PatronStat = 'P' | 'A' | 'T' | 'R' | 'O' | 'N';
@@ -46,6 +61,10 @@ export interface GridState {
 
 /** Recursos vitales con stock limitado por almacenamiento. */
 export type VitalResource = 'energy' | 'food' | 'water';
+/** Curativos: Vendas Caseras (stimpaks) y Desintoxicantes (radaway). */
+export type MedResource = 'stimpaks' | 'radaways';
+/** Todo lo que una sala puede producir por ciclo. */
+export type ProducedResource = VitalResource | MedResource;
 
 export interface Resources {
   /** Codos de PVC: moneda principal. */
@@ -55,6 +74,8 @@ export interface Resources {
   energy: number;
   food: number;
   water: number;
+  stimpaks: number;
+  radaways: number;
 }
 
 export type PatronStats = Record<PatronStat, number>;
@@ -83,6 +104,8 @@ export interface Dweller {
   pregnancy: { fatherId: string; elapsed: number } | null;
   /** Cortejo en curso en la Sala de Descanso (solo se guarda en la mujer de la pareja). */
   courtship: { partnerId: string; progress: number } | null;
+  /** Segundos entrenando hacia el siguiente punto del stat de su sala de entrenamiento. */
+  training: number;
 }
 
 export type IncidentKind = 'fire' | 'roaches';

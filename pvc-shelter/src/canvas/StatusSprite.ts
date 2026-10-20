@@ -1,16 +1,18 @@
 import type { Graphics } from 'pixi.js';
 import { ROOM_DEFS } from '../core/config';
 import { roomWidth } from '../core/GridManager';
-import type { Room, RoomRuntime, VitalResource } from '../core/types';
+import type { ProducedResource, Room, RoomRuntime } from '../core/types';
 import { CELL_W, FLOOR_H } from './layout';
 
 // Estado dinámico dibujado sobre las salas en cada frame (una sola Graphics para
 // todo el búnker). Las salas en sí son estáticas y viven en RoomSprite.
 
-export const RESOURCE_COLORS: Record<VitalResource, number> = {
+export const RESOURCE_COLORS: Record<ProducedResource, number> = {
   energy: 0xffd34d,
   food: 0x7ee08a,
   water: 0x6ec6ff,
+  stimpaks: 0xff6b6b,
+  radaways: 0xffa64d,
 };
 
 /** Centro del icono de recolección, en coordenadas de mundo (usado también para el hit-test). */
@@ -19,7 +21,7 @@ export function readyIconCenter(room: Room): { x: number; y: number } {
 }
 export const READY_ICON_RADIUS = 16;
 
-export function drawResourceIcon(g: Graphics, resource: VitalResource, cx: number, cy: number, r: number) {
+export function drawResourceIcon(g: Graphics, resource: ProducedResource, cx: number, cy: number, r: number) {
   g.circle(cx, cy, r + 3).fill({ color: 0x000000, alpha: 0.35 });
   g.circle(cx, cy, r).fill(RESOURCE_COLORS[resource]).stroke({ width: 2, color: 0xffffff });
   const s = r / 16;
@@ -35,6 +37,16 @@ export function drawResourceIcon(g: Graphics, resource: VitalResource, cx: numbe
     case 'food':
       g.circle(cx, cy + 2 * s, 7 * s).fill(dark);
       g.ellipse(cx + 4 * s, cy - 7 * s, 4 * s, 2 * s).fill(dark);
+      break;
+    case 'stimpaks':
+      // Cruz de venda
+      g.rect(cx - 2.5 * s, cy - 9 * s, 5 * s, 18 * s).fill(0xffffff);
+      g.rect(cx - 9 * s, cy - 2.5 * s, 18 * s, 5 * s).fill(0xffffff);
+      break;
+    case 'radaways':
+      // Bolsa de suero
+      g.roundRect(cx - 6 * s, cy - 8 * s, 12 * s, 14 * s, 3 * s).fill(dark);
+      g.rect(cx - 1 * s, cy + 6 * s, 2 * s, 5 * s).fill(dark);
       break;
   }
 }
@@ -92,13 +104,15 @@ export function drawRoomStatus(g: Graphics, { room, runtime, workers, capacity, 
     g.rect(x0 + 10, y0 + 28, (w - 20) * frac, 5).fill(0xff4a3a);
   }
 
-  if (!def.produces) return;
-  const color = RESOURCE_COLORS[def.produces];
+  // Salas con ciclo: producción (con icono para recolectar) o transmisión de radio.
+  if (def.cycleSeconds <= 0) return;
+  const color = def.produces ? RESOURCE_COLORS[def.produces] : def.accent;
 
-  if (runtime.ready) {
+  if (def.produces && runtime.ready) {
     const { x, y } = readyIconCenter(room);
     drawResourceIcon(g, def.produces, x, y + Math.sin(timeMs / 250) * 3, READY_ICON_RADIUS);
   } else if (cycle !== null && runtime.powered && !runtime.incident) {
+
     const frac = Math.min(1, runtime.progress / cycle);
     g.rect(x0 + 10, y0 + h - 22, w - 20, 4).fill({ color: 0x000000, alpha: 0.6 });
     g.rect(x0 + 10, y0 + h - 22, (w - 20) * frac, 4).fill(color);

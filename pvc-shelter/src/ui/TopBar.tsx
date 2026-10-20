@@ -1,4 +1,4 @@
-import { Disc3, Droplets, Smile, Users, Utensils, Wrench, Zap } from 'lucide-react';
+import { Bandage, Disc3, Droplets, FlaskConical, Smile, Users, Utensils, Wrench, Zap } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useMemo } from 'react';
 import { globalHappiness, populationCap } from '../core/Dwellers';
@@ -44,6 +44,8 @@ export function TopBar() {
   const cinta = useGameStore((s) => s.resources.cinta);
   const dwellers = useGameStore((s) => s.dwellers);
   const setDwellersOpen = useGameStore((s) => s.setDwellersOpen);
+  const stimpaks = useGameStore((s) => s.resources.stimpaks);
+  const radaways = useGameStore((s) => s.resources.radaways);
 
   // Los topes solo cambian cuando cambia el grid, no en cada tick.
   const caps = useMemo(
@@ -53,6 +55,8 @@ export function TopBar() {
       water: storageCap(grid, 'water'),
       required: requiredEnergy(grid),
       population: populationCap(grid),
+      stimpaks: storageCap(grid, 'stimpaks'),
+      radaways: storageCap(grid, 'radaways'),
     }),
     [grid],
   );
@@ -84,6 +88,16 @@ export function TopBar() {
         <span className="font-bold tabular-nums">{happiness}%</span>
       </div>
       <div className="ml-auto flex items-center gap-2">
+        <div
+          className="flex items-center gap-1.5 rounded-lg bg-bunker-900/70 px-3 py-2"
+          title={`Vendas Caseras ${stimpaks}/${caps.stimpaks} · Desintoxicantes ${radaways}/${caps.radaways}`}
+        >
+          <Bandage size={16} className="text-red-400" />
+          <span className="font-bold tabular-nums">{stimpaks}</span>
+          <FlaskConical size={16} className="ml-1 text-orange-300" />
+          <span className="font-bold tabular-nums">{radaways}</span>
+        </div>
+
         <div className="flex items-center gap-1.5 rounded-lg bg-bunker-900/70 px-3 py-2" title="Codos de PVC">
           <Wrench size={16} className="text-tape" />
           <span className="font-bold tabular-nums">{codos.toLocaleString('es')}</span>

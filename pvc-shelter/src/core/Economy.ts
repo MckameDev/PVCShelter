@@ -1,12 +1,16 @@
 import {
   BASE_STORAGE,
   DWELLERS_PER_BLOCK,
+  ITEM_BASE_CAPACITY,
+  ITEM_CAPACITY_PER_STORAGE_BLOCK,
   LEVEL_EFFICIENCY,
+  MED_BASE_STORAGE,
+  MED_STORAGE_PER_BLOCK,
   MERGE_EFFICIENCY,
   ROOM_DEFS,
   STORAGE_PER_BLOCK,
 } from './config';
-import type { GridState, Rock, Room, RoomType, VitalResource } from './types';
+import type { GridState, ProducedResource, Rock, Room, RoomType } from './types';
 
 // Fórmulas de costos y rendimiento. Separadas de GridManager para que el
 // Sprint 2 (economía) pueda crecer aquí sin tocar las reglas espaciales.
@@ -43,21 +47,37 @@ export function demolishRefund(room: Room): number {
   return Math.floor(ROOM_DEFS[room.type].baseCost * 0.5) * room.blocks;
 }
 
+/** Salas sin puestos de trabajo (pasivas o de paso). */
+const NO_WORKERS: RoomType[] = ['elevator', 'entrance', 'storage', 'barracks'];
+
 export function roomCapacity(room: Room): number {
-  return room.type === 'elevator' || room.type === 'entrance' ? 0 : DWELLERS_PER_BLOCK * room.blocks;
+  return NO_WORKERS.includes(room.type) ? 0 : DWELLERS_PER_BLOCK * room.blocks;
 }
 
 export function roomEfficiency(room: Room): number {
   return MERGE_EFFICIENCY[room.blocks] * LEVEL_EFFICIENCY[room.level];
 }
 
-/** Tope de almacenamiento: base + cada bloque que produce ese recurso (más si está mejorado). */
-export function storageCap(grid: GridState, resource: VitalResource): number {
-  let cap = BASE_STORAGE;
+/** Suma de bloques × eficiencia de nivel de las salas que cumplen la condición. */
+function weightedBlocks(grid: GridState, match: (room: Room) => boolean): number {
+  let total = 0;
   for (const room of Object.values(grid.rooms)) {
-    if (ROOM_DEFS[room.type].produces === resource) {
-      cap += STORAGE_PER_BLOCK * room.blocks * LEVEL_EFFICIENCY[room.level];
-    }
+    if (match(room)) total += room.blocks * LEVEL_EFFICIENCY[room.level];
   }
-  return cap;
+  return total;
 }
+
+/** Tope de almacenamiento: base + cada bloque que produce ese recurso (más si está mejorado). */
+export function storageCap(grid: GridState, resource: ProducedResource): number {
+  const producing = weightedBlocks(grid, (r) => ROOM_DEFS[r.type].produces === resource);
+  if (resource === 'stimpaks' || resource === 'radaways') {
+    return Math.floor(MED_BASE_STORAGE + MED_STORAGE_PER_BLOCK * producing);
+  }
+  return BASE_STORAGE + STORAGE_PER_BLOCK * producing;
+}
+
+/** Plazas del inventario de objetos (Sprint 5); los Almacenes la amplían. */
+export function itemCapacity(grid: GridState): number {
+  return Math.floor(ITEM_BASE_CAPACITY + ITEM_CAPACITY_PER_STORAGE_BLOCK * weightedBlocks(grid, (r) => r.type === 'storage'));
+}
+

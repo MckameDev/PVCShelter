@@ -1,12 +1,13 @@
 import { create } from 'zustand';
 import * as Bunker from '../core/Bunker';
-import { assignDweller } from '../core/Dwellers';
+import { assignDweller, PATRON_NAMES } from '../core/Dwellers';
 import { buildCost, demolishRefund, rockClearCost, upgradeCost } from '../core/Economy';
+import { applyMed, MED_NAMES } from '../core/Health';
 import * as Grid from '../core/GridManager';
 import { collectResource, RESOURCE_NAMES, rushRoom } from '../core/Production';
 import { advance } from '../core/Simulation';
 import type { SimEvent } from '../core/Simulation';
-import type { GameData, Rng, RoomType, VitalResource } from '../core/types';
+import type { GameData, MedResource, ProducedResource, Rng, RoomType } from '../core/types';
 
 export type Selection = { kind: 'room'; id: string } | { kind: 'rock'; id: string } | null;
 
@@ -37,7 +38,9 @@ interface Actions {
   demolishRoom: (roomId: string) => boolean;
   clearRock: (rockId: string) => boolean;
   assign: (dwellerId: string, roomId: string | null) => boolean;
-  collect: (resource: VitalResource) => boolean;
+  collect: (resource: ProducedResource) => boolean;
+  /** Usa una Venda Casera o un Desintoxicante en un habitante. */
+  heal: (dwellerId: string, med: MedResource) => boolean;
   rush: (roomId: string) => boolean;
   setDwellersOpen: (open: boolean) => void;
   openDweller: (dwellerId: string | null) => void;
@@ -94,6 +97,10 @@ function describeEvent(e: SimEvent): Notice {
       return notice(`${e.mother} y ${e.father} esperan un bebé.`, 'success');
     case 'incident-resolved':
       return notice(`Controlaron ${INCIDENT_NAMES[e.kind]}. +${e.codos} Codos.`, 'success');
+    case 'trained':
+      return notice(`${e.name} subió ${PATRON_NAMES[e.stat]} a ${e.value}.`, 'success');
+    case 'recruited':
+      return notice(`📻 ${e.name} escuchó la radio y llegó al búnker.`, 'success');
   }
 }
 
@@ -103,7 +110,9 @@ const EVENT_PRIORITY: SimEvent['type'][] = [
   'shortage',
   'fled',
   'birth',
+  'recruited',
   'level-up',
+  'trained',
   'grew-up',
   'conceived',
   'incident-resolved',
@@ -152,6 +161,8 @@ export const useGameStore = create<GameState>()((set, get) => {
       const state = get();
       const { buildType } = state;
       if (!buildType) return false;
+      const unlock = Bunker.canBuildType(pickData(state), buildType);
+      if (!unlock.ok) return fail(unlock.reason);
 
       // Validar posición antes que dinero: el mensaje de error es más útil.
       const check = Grid.canPlaceRoom(state.grid, buildType, floor, col);
@@ -246,7 +257,15 @@ export const useGameStore = create<GameState>()((set, get) => {
       return true;
     },
 
+    heal: (dwellerId, med) => {
+      const res = applyMed(pickData(get()), dwellerId, med);
+      if (!res.ok) return fail(res.reason);
+      set({ ...res.value, notice: notice(`Usaste ${MED_NAMES[med]} en ${res.value.dwellers[dwellerId].name}.`, 'success') });
+      return true;
+    },
+
     setDwellersOpen: (open) => set({ dwellersOpen: open }),
+
 
     openDweller: (dwellerId) => set({ dwellerModalId: dwellerId }),
 

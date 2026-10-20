@@ -1,10 +1,10 @@
-import { STARTING_DWELLERS, STARTING_RESOURCES } from './config';
-import { dwellersInRoom, generateDwellers } from './Dwellers';
+import { ROOM_DEFS, STARTING_DWELLERS, STARTING_RESOURCES } from './config';
+import { dwellersInRoom, generateDwellers, livingCount } from './Dwellers';
 import * as Grid from './GridManager';
 import { emptyRuntime, getRuntime } from './Production';
 import { createRng } from './random';
 import { fail, ok } from './types';
-import type { GameData, Result, Room, RoomRuntime } from './types';
+import type { GameData, Result, Room, RoomRuntime, RoomType } from './types';
 
 // Operaciones a nivel de partida: combinan las reglas espaciales del grid con
 // el estado que vive fuera de él (habitantes y temporizadores por sala).
@@ -42,6 +42,17 @@ export function applyRoomChange(data: GameData, change: Grid.RoomChange): GameDa
     );
   }
   return { ...data, grid: change.grid, runtime, dwellers };
+}
+
+/** Desbloqueo por población: cada tipo de sala exige un mínimo de habitantes vivos. */
+export function canBuildType(data: GameData, type: RoomType): Result<null> {
+  const def = ROOM_DEFS[type];
+  if (!def.buildable) return fail(`${def.name} no se puede construir.`);
+  const population = livingCount(data);
+  if (population < def.unlockPopulation) {
+    return fail(`${def.name} se desbloquea con ${def.unlockPopulation} habitantes (tienes ${population}).`);
+  }
+  return ok(null);
 }
 
 export function canDemolish(data: GameData, roomId: string): Result<Room> {

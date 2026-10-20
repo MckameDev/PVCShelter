@@ -20,14 +20,16 @@ import { dwellersInRoom } from './Dwellers';
 import { roomCapacity, roomEfficiency, storageCap } from './Economy';
 import { randomInt } from './random';
 import { fail, ok } from './types';
-import type { Dweller, GameData, IncidentKind, PatronStat, Result, Rng, Room, RoomRuntime, VitalResource } from './types';
+import type { Dweller, GameData, IncidentKind, PatronStat, ProducedResource, Result, Rng, Room, RoomRuntime } from './types';
 
 // Ciclos de producción, recolección y Modo Exprés (Rush).
 
-export const RESOURCE_NAMES: Record<VitalResource, string> = {
+export const RESOURCE_NAMES: Record<ProducedResource, string> = {
   energy: 'Energía',
   food: 'Comida',
   water: 'Agua',
+  stimpaks: 'Vendas Caseras',
+  radaways: 'Desintoxicantes',
 };
 
 export function emptyRuntime(): RoomRuntime {
@@ -50,7 +52,7 @@ export function statSum(workers: Dweller[], stat: PatronStat): number {
  */
 export function cycleTime(room: Room, workers: Dweller[], happiness = 0.5): number | null {
   const def = ROOM_DEFS[room.type];
-  if (!def.produces || !def.stat || workers.length === 0) return null;
+  if (def.cycleSeconds <= 0 || !def.stat || workers.length === 0) return null;
   const sum = statSum(workers, def.stat);
   if (sum <= 0) return null;
   const t = (def.cycleSeconds * roomCapacity(room) * REFERENCE_STAT) / sum;
@@ -80,7 +82,7 @@ export function rushFailChance(room: Room, runtime: RoomRuntime, workers: Dwelle
   return Math.min(RUSH_FAIL_MAX, Math.max(RUSH_FAIL_MIN, chance));
 }
 
-function addResource(data: GameData, resource: VitalResource, amount: number): { data: GameData; stored: number } {
+function addResource(data: GameData, resource: ProducedResource, amount: number): { data: GameData; stored: number } {
   const cap = storageCap(data.grid, resource);
   const current = data.resources[resource];
   const next = Math.min(cap, current + amount);
@@ -99,7 +101,7 @@ function rollCodos(rng: Rng, workers: Dweller[], blocks: number): number {
 }
 
 export interface CollectSummary {
-  resource: VitalResource;
+  resource: ProducedResource;
   /** Unidades que entraron al almacén (puede ser menos que lo producido si está lleno). */
   stored: number;
   codos: number;
@@ -107,7 +109,7 @@ export interface CollectSummary {
 }
 
 /** Recolecta todas las salas listas que producen `resource` (como tocar un icono en Fallout Shelter). */
-export function collectResource(data: GameData, resource: VitalResource, rng: Rng): Result<{ data: GameData; summary: CollectSummary }> {
+export function collectResource(data: GameData, resource: ProducedResource, rng: Rng): Result<{ data: GameData; summary: CollectSummary }> {
   const readyRooms = Object.values(data.grid.rooms).filter(
     (r) => ROOM_DEFS[r.type].produces === resource && getRuntime(data, r.id).ready,
   );
@@ -144,7 +146,8 @@ export function canRush(data: GameData, roomId: string): Result<{ room: Room; wo
 }
 
 export type RushOutcome =
-  | { success: true; resource: VitalResource; stored: number; codos: number }
+  | { success: true; resource: ProducedResource; stored: number; codos: number }
+
   | { success: false; incident: IncidentKind };
 
 export function rushRoom(data: GameData, roomId: string, rng: Rng): Result<{ data: GameData; outcome: RushOutcome }> {

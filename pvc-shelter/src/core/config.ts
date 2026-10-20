@@ -1,4 +1,4 @@
-import type { PatronStat, RoomBlocks, RoomLevel, RoomType, VitalResource } from './types';
+import type { PatronStat, ProducedResource, RoomBlocks, RoomLevel, RoomType } from './types';
 
 // Dimensiones del subsuelo (en celdas). Una sala simple ocupa BLOCK_CELLS celdas;
 // un ascensor ocupa 1.
@@ -18,10 +18,23 @@ export const LEVEL_EFFICIENCY: Record<RoomLevel, number> = { 1: 1, 2: 1.5, 3: 2 
 /** Pisos libres de rocas bajo la superficie. */
 export const ROCK_FREE_FLOORS = 2;
 
+export type RoomCategory = 'core' | 'resources' | 'health' | 'utility' | 'training';
+
+export const CATEGORY_NAMES: Record<RoomCategory, string> = {
+  core: 'Básicas',
+  resources: 'Recursos',
+  health: 'Salud',
+  utility: 'Utilidad',
+  training: 'Entrenamiento',
+};
+
 export interface RoomDef {
   type: RoomType;
   name: string;
   description: string;
+  category: RoomCategory;
+  /** Habitantes vivos necesarios para poder construirla. */
+  unlockPopulation: number;
   /** Ancho de un bloque en celdas. */
   cellsPerBlock: number;
   buildable: boolean;
@@ -30,15 +43,21 @@ export interface RoomDef {
   mergeable: boolean;
   /** Nivel máximo de mejora (1 = no mejorable). */
   maxLevel: RoomLevel;
+  /** Stat P.A.T.R.O.N. que usa la sala (producir, transmitir o entrenar). */
   stat: PatronStat | null;
+  /** Stat que entrena (solo salas de entrenamiento). */
+  trains: PatronStat | null;
   /** Costo del primer bloque; cada bloque existente del mismo tipo suma costIncrement. */
   baseCost: number;
   costIncrement: number;
   /** Costo por bloque para subir a nivel 2 y 3. */
   upgradeCosts: { 2: number; 3: number };
   /** Recurso que produce por ciclo, o null si no produce. */
-  produces: VitalResource | null;
-  /** Duración base de un ciclo con la sala llena de habitantes de stat REFERENCE_STAT. */
+  produces: ProducedResource | null;
+  /**
+   * Duración base de un ciclo con la sala llena de habitantes de stat
+   * REFERENCE_STAT (producción, o transmisión en la radio). 0 = sin ciclo.
+   */
   cycleSeconds: number;
   /** Unidades por ciclo de una sala simple nivel 1 (se multiplica por roomEfficiency). */
   baseYield: number;
@@ -49,134 +68,210 @@ export interface RoomDef {
   accent: number;
 }
 
-const NO_PRODUCTION = { produces: null, cycleSeconds: 0, baseYield: 0 } as const;
+/** Valores comunes; cada sala sobrescribe lo que necesita. */
+const DEFAULTS = {
+  category: 'resources',
+  unlockPopulation: 0,
+  cellsPerBlock: BLOCK_CELLS,
+  buildable: true,
+  demolishable: true,
+  mergeable: true,
+  maxLevel: 3,
+  stat: null,
+  trains: null,
+  baseCost: 100,
+  costIncrement: 50,
+  upgradeCosts: { 2: 300, 3: 900 },
+  produces: null,
+  cycleSeconds: 0,
+  baseYield: 0,
+  energyDraw: 0.03,
+} as const satisfies Partial<RoomDef>;
+
+type RoomSpec = Partial<RoomDef> & Pick<RoomDef, 'name' | 'description' | 'color' | 'accent'>;
+const room = (type: RoomType, spec: RoomSpec): RoomDef => ({ ...DEFAULTS, type, ...spec });
+
+const TRAINING_COLORS: Record<PatronStat, [number, number]> = {
+  P: [0x6b3a2a, 0xff8a5c],
+  A: [0x2a4a6b, 0x8ab8ff],
+  T: [0x4a5a2a, 0xb8e05c],
+  R: [0x5c4a1f, 0xffc94d],
+  O: [0x6b2a5c, 0xff8ad8],
+  N: [0x2a5c5c, 0x5cffe0],
+};
+
+const trainingRoom = (stat: PatronStat, name: string, gear: string, unlockPopulation: number): RoomDef =>
+  room(`train-${stat}`, {
+    name,
+    description: `Se entrena ${gear}. Sube un punto el stat ${stat} de quienes están dentro, hasta 10.`,
+    category: 'training',
+    unlockPopulation,
+    stat,
+    trains: stat,
+    baseCost: 400,
+    costIncrement: 100,
+    upgradeCosts: { 2: 800, 3: 2000 },
+    energyDraw: 0.04,
+    color: TRAINING_COLORS[stat][0],
+    accent: TRAINING_COLORS[stat][1],
+  });
 
 export const ROOM_DEFS: Record<RoomType, RoomDef> = {
-  entrance: {
-    type: 'entrance',
+  entrance: room('entrance', {
     name: 'Puerta del Búnker',
     description: 'Compuerta de bidones y lona. Se puede reforzar para resistir asaltos.',
-    cellsPerBlock: BLOCK_CELLS,
+    category: 'core',
     buildable: false,
     demolishable: false,
     mergeable: false,
-    maxLevel: 3,
-    stat: null,
     baseCost: 0,
     costIncrement: 0,
     upgradeCosts: { 2: 500, 3: 1500 },
-    ...NO_PRODUCTION,
     energyDraw: 0,
     color: 0x5b6470,
     accent: 0xf2c94c,
-  },
-  elevator: {
-    type: 'elevator',
+  }),
+  elevator: room('elevator', {
     name: 'Ascensor de Poleas',
     description: 'Conecta pisos verticalmente. No consume energía.',
+    category: 'core',
     cellsPerBlock: 1,
-    buildable: true,
-    demolishable: true,
     mergeable: false,
     maxLevel: 1,
-    stat: null,
-    baseCost: 100,
     costIncrement: 0,
     upgradeCosts: { 2: 0, 3: 0 },
-    ...NO_PRODUCTION,
     energyDraw: 0,
     color: 0x3a3f47,
     accent: 0xb0b7c3,
-  },
-  power: {
-    type: 'power',
+  }),
+  power: room('power', {
     name: 'Generador a Pedales',
     description: 'Produce Energía. Usa Poderío (P).',
-    cellsPerBlock: BLOCK_CELLS,
-    buildable: true,
-    demolishable: true,
-    mergeable: true,
-    maxLevel: 3,
     stat: 'P',
-    baseCost: 100,
-    costIncrement: 50,
-    upgradeCosts: { 2: 300, 3: 900 },
     produces: 'energy',
     cycleSeconds: 30,
     baseYield: 12,
     energyDraw: 0,
     color: 0x8a6d1f,
     accent: 0xffd34d,
-  },
-  food: {
-    type: 'food',
+  }),
+  food: room('food', {
     name: 'Cultivo Hidropónico',
     description: 'Produce Comida en tubos de PVC. Usa Astucia (A).',
-    cellsPerBlock: BLOCK_CELLS,
-    buildable: true,
-    demolishable: true,
-    mergeable: true,
-    maxLevel: 3,
     stat: 'A',
-    baseCost: 100,
-    costIncrement: 50,
-    upgradeCosts: { 2: 300, 3: 900 },
     produces: 'food',
     cycleSeconds: 30,
     baseYield: 10,
-    energyDraw: 0.03,
     color: 0x2f6b3a,
     accent: 0x7ee08a,
-  },
-  water: {
-    type: 'water',
+  }),
+  water: room('water', {
     name: 'Filtro de Bidones',
     description: 'Produce Agua. Usa Ñeque (N).',
-    cellsPerBlock: BLOCK_CELLS,
-    buildable: true,
-    demolishable: true,
-    mergeable: true,
-    maxLevel: 3,
     stat: 'N',
-    baseCost: 100,
-    costIncrement: 50,
-    upgradeCosts: { 2: 300, 3: 900 },
     produces: 'water',
     cycleSeconds: 30,
     baseYield: 10,
-    energyDraw: 0.03,
     color: 0x22577a,
     accent: 0x6ec6ff,
-  },
-  living: {
-    type: 'living',
+  }),
+  living: room('living', {
     name: 'Sala de Descanso',
     description: 'Aumenta la población máxima y permite la reproducción. Usa Optimismo (O).',
-    cellsPerBlock: BLOCK_CELLS,
-    buildable: true,
-    demolishable: true,
-    mergeable: true,
-    maxLevel: 3,
+    category: 'core',
     stat: 'O',
-    baseCost: 100,
-    costIncrement: 50,
-    upgradeCosts: { 2: 300, 3: 900 },
-    ...NO_PRODUCTION,
     energyDraw: 0.015,
     color: 0x7a3b5c,
     accent: 0xff9ecf,
-  },
+  }),
+
+  // --- Sprint 4 -------------------------------------------------------------
+  storage: room('storage', {
+    name: 'Almacén de Trastos',
+    description: 'Estanterías de palets: aumenta el límite del inventario de objetos.',
+    category: 'utility',
+    unlockPopulation: 8,
+    baseCost: 150,
+    energyDraw: 0.01,
+    color: 0x5c4a32,
+    accent: 0xd9a066,
+  }),
+  medbay: room('medbay', {
+    name: 'Enfermería',
+    description: 'Produce Vendas Caseras que curan HP. Usa Astucia (A).',
+    category: 'health',
+    unlockPopulation: 12,
+    stat: 'A',
+    produces: 'stimpaks',
+    cycleSeconds: 60,
+    baseYield: 1,
+    baseCost: 400,
+    costIncrement: 100,
+    upgradeCosts: { 2: 800, 3: 2000 },
+    energyDraw: 0.04,
+    color: 0x8a2f2f,
+    accent: 0xff6b6b,
+  }),
+  detox: room('detox', {
+    name: 'Planta Depuradora',
+    description: 'Produce Desintoxicantes que curan el daño por agua sucia. Usa Ñeque (N).',
+    category: 'health',
+    unlockPopulation: 14,
+    stat: 'N',
+    produces: 'radaways',
+    cycleSeconds: 60,
+    baseYield: 1,
+    baseCost: 400,
+    costIncrement: 100,
+    upgradeCosts: { 2: 800, 3: 2000 },
+    energyDraw: 0.04,
+    color: 0x55632a,
+    accent: 0xc6ff4d,
+  }),
+  radio: room('radio', {
+    name: 'Antena de Radio Casera',
+    description: 'Sube la felicidad global y puede atraer nuevos habitantes del exterior. Usa Optimismo (O).',
+    category: 'utility',
+    unlockPopulation: 16,
+    stat: 'O',
+    cycleSeconds: 120,
+    baseCost: 600,
+    costIncrement: 200,
+    upgradeCosts: { 2: 1200, 3: 3000 },
+    energyDraw: 0.05,
+    color: 0x3d2d5c,
+    accent: 0xc58cff,
+  }),
+  barracks: room('barracks', {
+    name: 'Barracones',
+    description: 'Literas apiladas: aumentan la población máxima (hasta 200).',
+    category: 'utility',
+    unlockPopulation: 20,
+    baseCost: 500,
+    costIncrement: 150,
+    upgradeCosts: { 2: 1000, 3: 2500 },
+    energyDraw: 0.02,
+    color: 0x4a4f5c,
+    accent: 0x9fb4d9,
+  }),
+  'train-P': trainingRoom('P', 'Gimnasio de Poderío', 'levantando bidones llenos', 24),
+  'train-A': trainingRoom('A', 'Aula de Astucia', 'con manuales de fontanería', 26),
+  'train-T': trainingRoom('T', 'Pista de Tenacidad', 'corriendo en una cinta de rodillos', 28),
+  'train-N': trainingRoom('N', 'Campo de Ñeque', 'tirando dardos a una diana de lona', 30),
+  'train-R': trainingRoom('R', 'Mesa de Rebusque', 'jugando a las cartas', 32),
+  'train-O': trainingRoom('O', 'Teatrito de Optimismo', 'actuando en un escenario de cajas', 34),
 };
 
 export const BUILDABLE_TYPES: RoomType[] = (Object.keys(ROOM_DEFS) as RoomType[]).filter(
   (t) => ROOM_DEFS[t].buildable,
 );
 
+
 // ---------------------------------------------------------------------------
 // Sprint 2: economía de recursos vitales
 // ---------------------------------------------------------------------------
 
-export const STARTING_RESOURCES = { codos: 3000, cinta: 5, energy: 80, food: 80, water: 80 };
+export const STARTING_RESOURCES = { codos: 3000, cinta: 5, energy: 80, food: 80, water: 80, stimpaks: 2, radaways: 1 };
 export const STARTING_DWELLERS = 6;
 
 /** Almacenamiento base de cada recurso vital; cada bloque productor de ese recurso suma más. */
@@ -268,3 +363,31 @@ export const CHILDHOOD_SECONDS = 240;
 export const POPULATION_BASE = 8;
 export const POPULATION_PER_LIVING_BLOCK = 4;
 export const POPULATION_HARD_CAP = 200;
+
+// ---------------------------------------------------------------------------
+// Sprint 4: salud, almacenamiento, barracones, radio y entrenamiento
+// ---------------------------------------------------------------------------
+
+/** Tope de curativos: base + por bloque de la sala que los produce (× eficiencia de nivel). */
+export const MED_BASE_STORAGE = 5;
+export const MED_STORAGE_PER_BLOCK = 5;
+export const STIMPAK_HEAL = 40;
+export const RADAWAY_CURE = 40;
+
+/** Plazas de inventario de objetos: base + por bloque de Almacén (× eficiencia de nivel). */
+export const ITEM_BASE_CAPACITY = 10;
+export const ITEM_CAPACITY_PER_STORAGE_BLOCK = 10;
+
+export const POPULATION_PER_BARRACKS_BLOCK = 6;
+
+/** Puntos de felicidad que suma cada bloque de radio con personal (× nivel), con tope. */
+export const RADIO_HAPPINESS_PER_BLOCK = 5;
+export const RADIO_HAPPINESS_MAX = 25;
+/** Probabilidad de atraer a alguien por transmisión: base + Optimismo medio × factor. */
+export const RADIO_RECRUIT_BASE = 0.3;
+export const RADIO_RECRUIT_PER_O = 0.05;
+export const RADIO_RECRUIT_MAX = 0.9;
+
+/** Segundos para subir un stat de n a n+1 = TRAINING_SECONDS_PER_POINT × n (÷ eficiencia de nivel). */
+export const TRAINING_SECONDS_PER_POINT = 20;
+export const MAX_BASE_STAT = 10;

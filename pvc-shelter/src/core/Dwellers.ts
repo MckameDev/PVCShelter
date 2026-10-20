@@ -5,6 +5,7 @@ import {
   MAX_DWELLER_LEVEL,
   POPULATION_BASE,
   POPULATION_HARD_CAP,
+  POPULATION_PER_BARRACKS_BLOCK,
   POPULATION_PER_LIVING_BLOCK,
   ROOM_DEFS,
   START_HAPPINESS,
@@ -54,6 +55,7 @@ function baseDweller(id: string, name: string, sex: Dweller['sex'], stats: Patro
     childTime: 0,
     pregnancy: null,
     courtship: null,
+    training: 0,
   };
 }
 
@@ -119,11 +121,13 @@ export function livingCount(data: Pick<GameData, 'dwellers'>): number {
   return Object.values(data.dwellers).filter((d) => d.alive).length;
 }
 
-/** Población máxima según las Salas de Descanso construidas. */
+/** Población máxima según Salas de Descanso y Barracones (tope absoluto de 200). */
 export function populationCap(grid: GridState): number {
   let cap = POPULATION_BASE;
   for (const room of Object.values(grid.rooms)) {
-    if (room.type === 'living') cap += POPULATION_PER_LIVING_BLOCK * room.blocks * LEVEL_EFFICIENCY[room.level];
+    const perBlock =
+      room.type === 'living' ? POPULATION_PER_LIVING_BLOCK : room.type === 'barracks' ? POPULATION_PER_BARRACKS_BLOCK : 0;
+    cap += perBlock * room.blocks * LEVEL_EFFICIENCY[room.level];
   }
   return Math.min(POPULATION_HARD_CAP, Math.floor(cap));
 }
@@ -153,6 +157,7 @@ export function assignDweller(data: GameData, dwellerId: string, roomId: string 
       return fail(`${dweller.name} está embarazada y no entrará a una sala con un incidente.`);
     }
   }
-  // Cambiar de sala interrumpe un cortejo en curso.
-  return ok({ ...data, dwellers: { ...data.dwellers, [dwellerId]: { ...dweller, roomId, courtship: null } } });
+  // Cambiar de sala interrumpe un cortejo y un entrenamiento en curso.
+  return ok({ ...data, dwellers: { ...data.dwellers, [dwellerId]: { ...dweller, roomId, courtship: null, training: 0 } } });
+
 }
