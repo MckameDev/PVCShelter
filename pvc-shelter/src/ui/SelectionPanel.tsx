@@ -1,9 +1,9 @@
-import { ArrowBigUp, Flame, Mountain, Pickaxe, Trash, UserMinus, Wrench, X, Zap, ZapOff } from 'lucide-react';
+import { ArrowBigUp, Baby, Flame, Heart, Mountain, Pickaxe, Trash, UserMinus, Wrench, X, Zap, ZapOff } from 'lucide-react';
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { canDemolish } from '../core/Bunker';
-import { ROOM_DEFS } from '../core/config';
-import { dwellersInRoom, PATRON_NAMES } from '../core/Dwellers';
+import { COURTSHIP_SECONDS, LEVEL_EFFICIENCY, POPULATION_PER_LIVING_BLOCK, ROOM_DEFS } from '../core/config';
+import { dwellersInRoom, isAdult, PATRON_NAMES } from '../core/Dwellers';
 import { demolishRefund, rockClearCost, roomCapacity, roomEfficiency, upgradeCost } from '../core/Economy';
 import { canUpgradeRoom } from '../core/GridManager';
 import { canRush, cycleTime, cycleYield, getRuntime, RESOURCE_NAMES } from '../core/Production';
@@ -139,6 +139,7 @@ function WorkersSection({ room }: { room: Room }) {
   const dwellers = useGameStore((s) => s.dwellers);
   const rooms = useGameStore((s) => s.grid.rooms);
   const assign = useGameStore((s) => s.assign);
+  const openDweller = useGameStore((s) => s.openDweller);
   const capacity = roomCapacity(room);
   const stat = ROOM_DEFS[room.type].stat;
   if (capacity === 0) return null;
@@ -146,7 +147,7 @@ function WorkersSection({ room }: { room: Room }) {
   const workers = dwellersInRoom({ dwellers }, room.id);
   // Candidatos: primero los sin asignar, luego por el stat que usa la sala.
   const candidates = Object.values(dwellers)
-    .filter((d) => d.alive && d.roomId !== room.id)
+    .filter((d) => d.alive && isAdult(d) && d.roomId !== room.id)
     .sort((a, b) => Number(a.roomId !== null) - Number(b.roomId !== null) || (stat ? b.stats[stat] - a.stats[stat] : 0));
 
   return (
@@ -162,7 +163,9 @@ function WorkersSection({ room }: { room: Room }) {
           <li key={d.id} className="flex items-center gap-2 rounded-md bg-black/30 px-2 py-1 text-sm">
             <div className="min-w-0 flex-1">
               <div className="flex justify-between gap-2">
-                <span className="truncate">{d.name}</span>
+                <button type="button" onClick={() => openDweller(d.id)} className="truncate hover:underline">
+                  {d.name}
+                </button>
                 {stat && (
                   <span className="text-xs text-tape" title={PATRON_NAMES[stat]}>
                     {stat} {d.stats[stat]}
@@ -204,6 +207,41 @@ function WorkersSection({ room }: { room: Room }) {
   );
 }
 
+/** Sala de Descanso: parejas cortejando y embarazos de quienes están dentro. */
+function LivingSection({ room }: { room: Room }) {
+  const dwellers = useGameStore((s) => s.dwellers);
+  if (room.type !== 'living') return null;
+  const occupants = dwellersInRoom({ dwellers }, room.id);
+  const couples = occupants.filter((d) => d.courtship);
+  const pregnant = occupants.filter((d) => d.pregnancy);
+  const beds = Math.floor(POPULATION_PER_LIVING_BLOCK * room.blocks * LEVEL_EFFICIENCY[room.level]);
+
+  return (
+    <div className="mb-3 space-y-1.5 rounded-lg bg-black/30 p-2 text-sm">
+      <p className="text-xs text-pvc/70">
+        Aporta {beds} plazas de población. Un hombre y una mujer adultos (sin parentesco) aquí dentro se cortejan; el
+        Optimismo (O) lo acelera.
+      </p>
+      {couples.map((w) => (
+        <div key={w.id}>
+          <div className="flex items-center gap-1 text-xs">
+            <Heart size={12} className="text-pink-400" />
+            {w.name} y {dwellers[w.courtship!.partnerId]?.name}
+          </div>
+          <div className="mt-0.5 h-1.5 overflow-hidden rounded-full bg-black/60">
+            <div className="h-full bg-pink-400" style={{ width: `${(w.courtship!.progress / COURTSHIP_SECONDS) * 100}%` }} />
+          </div>
+        </div>
+      ))}
+      {pregnant.map((w) => (
+        <div key={w.id} className="flex items-center gap-1 text-xs text-pink-200">
+          <Baby size={12} /> {w.name} está embarazada
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function RoomDetails({ room }: { room: Room }) {
   const state = useGameStore();
   // Se reinicia al cambiar de sala porque el padre usa key={room.id}.
@@ -228,6 +266,7 @@ function RoomDetails({ room }: { room: Room }) {
       </div>
 
       <ProductionSection room={room} />
+      <LivingSection room={room} />
       <WorkersSection room={room} />
 
       <div className="flex gap-2">

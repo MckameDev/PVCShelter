@@ -22,6 +22,8 @@ interface UiState {
   selection: Selection;
   notice: Notice | null;
   dwellersOpen: boolean;
+  /** Habitante cuya ficha P.A.T.R.O.N. está abierta. */
+  dwellerModalId: string | null;
 }
 
 interface Actions {
@@ -38,6 +40,7 @@ interface Actions {
   collect: (resource: VitalResource) => boolean;
   rush: (roomId: string) => boolean;
   setDwellersOpen: (open: boolean) => void;
+  openDweller: (dwellerId: string | null) => void;
   dismissNotice: () => void;
 }
 
@@ -68,18 +71,49 @@ const freshState = (seed: number): GameData & UiState => ({
   selection: null,
   notice: null,
   dwellersOpen: false,
+  dwellerModalId: null,
 });
 
 const INCIDENT_NAMES = { fire: 'el incendio', roaches: 'la plaga de cucarachas' } as const;
 
-/** Elige el evento más importante del tick para mostrarlo (las muertes primero). */
+function describeEvent(e: SimEvent): Notice {
+  switch (e.type) {
+    case 'dweller-died':
+      return notice(`${e.name} ha muerto.`, 'error');
+    case 'shortage':
+      return notice(`¡Se acabó la ${RESOURCE_NAMES[e.resource]}!`, 'error');
+    case 'fled':
+      return notice(`${e.name} está embarazada y huyó del incidente.`, 'info');
+    case 'birth':
+      return notice(`¡${e.mother} dio a luz a ${e.child}!`, 'success');
+    case 'level-up':
+      return notice(`${e.name} subió a nivel ${e.level}. +${e.codos} Codos.`, 'success');
+    case 'grew-up':
+      return notice(`${e.name} ya es adulto y puede trabajar.`, 'info');
+    case 'conceived':
+      return notice(`${e.mother} y ${e.father} esperan un bebé.`, 'success');
+    case 'incident-resolved':
+      return notice(`Controlaron ${INCIDENT_NAMES[e.kind]}. +${e.codos} Codos.`, 'success');
+  }
+}
+
+/** Orden de importancia: solo se muestra el evento más relevante del tick. */
+const EVENT_PRIORITY: SimEvent['type'][] = [
+  'dweller-died',
+  'shortage',
+  'fled',
+  'birth',
+  'level-up',
+  'grew-up',
+  'conceived',
+  'incident-resolved',
+];
+
 function eventNotice(events: SimEvent[]): Notice | null {
-  const death = events.find((e) => e.type === 'dweller-died');
-  if (death) return notice(`${death.name} ha muerto.`, 'error');
-  const shortage = events.find((e) => e.type === 'shortage');
-  if (shortage) return notice(`¡Se acabó la ${RESOURCE_NAMES[shortage.resource]}!`, 'error');
-  const resolved = events.find((e) => e.type === 'incident-resolved');
-  if (resolved) return notice(`Controlaron ${INCIDENT_NAMES[resolved.kind]}. +${resolved.codos} Codos.`, 'success');
+  for (const type of EVENT_PRIORITY) {
+    const e = events.find((ev) => ev.type === type);
+    if (e) return describeEvent(e);
+  }
   return null;
 }
 
@@ -213,6 +247,8 @@ export const useGameStore = create<GameState>()((set, get) => {
     },
 
     setDwellersOpen: (open) => set({ dwellersOpen: open }),
+
+    openDweller: (dwellerId) => set({ dwellerModalId: dwellerId }),
 
     dismissNotice: () => set({ notice: null }),
   };

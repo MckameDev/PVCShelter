@@ -4,6 +4,7 @@ import { useGameStore } from './store/useGameStore';
 import { BuildMenu } from './ui/BuildMenu';
 import { DwellersPanel } from './ui/DwellersPanel';
 import { GameCanvas } from './ui/GameCanvas';
+import { PatronModal } from './ui/PatronModal';
 import { SelectionPanel } from './ui/SelectionPanel';
 import { Toast } from './ui/Toast';
 import { TopBar } from './ui/TopBar';
@@ -16,12 +17,14 @@ export default function App() {
     return () => loop.stop();
   }, []);
 
-  // Esc: cierra paneles en orden (construcción, habitantes, selección).
+  // Esc: cierra paneles en orden (ficha, construcción, habitantes, selección).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
-      const { buildType, cancelBuild, dwellersOpen, setDwellersOpen, select } = useGameStore.getState();
-      if (buildType) cancelBuild();
+      const { buildType, cancelBuild, dwellersOpen, setDwellersOpen, select, dwellerModalId, openDweller } =
+        useGameStore.getState();
+      if (dwellerModalId) openDweller(null);
+      else if (buildType) cancelBuild();
       else if (dwellersOpen) setDwellersOpen(false);
       else select(null);
     };
@@ -39,6 +42,7 @@ export default function App() {
         <DwellersPanel />
         <SelectionPanel />
         <BuildMenu />
+        <PatronModal />
       </div>
     </main>
   );

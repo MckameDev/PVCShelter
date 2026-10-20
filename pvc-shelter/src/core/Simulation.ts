@@ -12,8 +12,12 @@ import {
   RUSH_HEAT_DECAY_SECONDS,
   THIRST_INTOX,
   WATER_PER_DWELLER,
+  XP_PER_STAT_SECOND,
 } from './config';
+import { globalHappiness, populationCap } from './Dwellers';
 import { buildOccupancy, roomNeighborIds } from './GridManager';
+import { applyLevelUps, happinessTarget, updateCourtship, updateHappiness, updatePregnanciesAndGrowth } from './LifeCycle';
+import type { LifeEvent } from './LifeCycle';
 import { cycleTime, getRuntime } from './Production';
 import type { Dweller, GameData, GridState, IncidentKind, Room, RoomRuntime } from './types';
 
@@ -25,6 +29,7 @@ import type { Dweller, GameData, GridState, IncidentKind, Room, RoomRuntime } fr
 export const SIM_STEP = 0.25;
 
 export type SimEvent =
+  | LifeEvent
   | { type: 'dweller-died'; name: string }
   | { type: 'incident-resolved'; roomId: string; kind: IncidentKind; codos: number }
   | { type: 'shortage'; resource: 'food' | 'water' | 'energy' };
@@ -108,11 +113,20 @@ function consume(stock: number, need: number): { stock: number; shortage: number
 
 export function simulate(data: GameData, dt: number): { data: GameData; events: SimEvent[] } {
   const events: SimEvent[] = [];
+  const life: LifeEvent[] = [];
   const { grid } = data;
   const resources = { ...data.resources };
   const runtime: Record<string, RoomRuntime> = {};
   const dwellers: Record<string, Dweller> = {};
   for (const [id, d] of Object.entries(data.dwellers)) dwellers[id] = { ...d };
+
+  // 0. Las embarazadas huyen de las salas con incidentes.
+  for (const d of Object.values(dwellers)) {
+    if (d.alive && d.pregnancy && d.roomId && data.runtime[d.roomId]?.incident) {
+      d.roomId = null;
+      life.push({ type: 'fled', name: d.name });
+    }
+  }
 
   const alive = Object.values(dwellers).filter((d) => d.alive);
   const workersByRoom = new Map<string, Dweller[]>();
@@ -138,7 +152,7 @@ export function simulate(data: GameData, dt: number): { data: GameData; events: 
   resources.energy = Math.max(0, resources.energy - drain);
   if (hadEnergy && resources.energy === 0 && drain > 0) events.push({ type: 'shortage', resource: 'energy' });
 
-  // 2. Comida y agua por habitante vivo.
+  // 2. Comida y agua por habitante vivo (los niños también comen).
   const hadFood = resources.food > 0;
   const hadWater = resources.water > 0;
   const food = consume(resources.food, alive.length * FOOD_PER_DWELLER * dt);
@@ -186,22 +200,56 @@ export function simulate(data: GameData, dt: number): { data: GameData; events: 
       dw.hp = 0;
       dw.alive = false;
       dw.roomId = null;
+      dw.pregnancy = null;
+      dw.courtship = null;
       events.push({ type: 'dweller-died', name: dw.name });
     }
   }
 
-  // 5. Producción: avanza solo con energía, sin incidente y sin cosecha pendiente.
+  // 5. Producción (con bono de felicidad global) y XP por trabajar.
+  const happiness = globalHappiness({ dwellers });
   for (const room of Object.values(grid.rooms)) {
     const rt = runtime[room.id];
-    if (!ROOM_DEFS[room.type].produces || rt.ready || rt.incident || !rt.powered) continue;
+    const stat = ROOM_DEFS[room.type].stat;
+    if (!ROOM_DEFS[room.type].produces || !stat || rt.ready || rt.incident || !rt.powered) continue;
     const workers = (workersByRoom.get(room.id) ?? []).filter((w) => dwellers[w.id].alive);
-    const t = cycleTime(room, workers);
+    const t = cycleTime(room, workers, happiness);
     if (t === null) continue;
     const progress = rt.progress + dt;
     runtime[room.id] = progress >= t ? { ...rt, progress: t, ready: true } : { ...rt, progress };
+    for (const w of workers) dwellers[w.id].xp += w.stats[stat] * XP_PER_STAT_SECOND * dt;
   }
 
-  return { data: { ...data, resources, runtime, dwellers, time: data.time + dt }, events };
+  // 6. Niveles y felicidad individual.
+  for (const d of Object.values(dwellers)) {
+    if (!d.alive) continue;
+    resources.codos += applyLevelUps(d, life);
+    const room = d.roomId ? grid.rooms[d.roomId] : undefined;
+    const target = happinessTarget(d, {
+      room,
+      runtime: room ? runtime[room.id] : undefined,
+      foodShortage: food.shortage > 0,
+      waterShortage: water.shortage > 0,
+    });
+    updateHappiness(d, target, dt);
+  }
+
+  // 7. Reproducción: cortejo en Salas de Descanso con energía y sin incidentes.
+  for (const room of Object.values(grid.rooms)) {
+    const rt = runtime[room.id];
+    if (room.type !== 'living' || !rt.powered || rt.incident) continue;
+    updateCourtship((workersByRoom.get(room.id) ?? []).map((w) => dwellers[w.id]), dt, life);
+  }
+  for (const d of Object.values(dwellers)) {
+    // Un cortejo solo sigue vivo dentro de una Sala de Descanso.
+    if (d.courtship && (!d.roomId || grid.rooms[d.roomId]?.type !== 'living')) d.courtship = null;
+  }
+  const nextDwellerId = updatePregnanciesAndGrowth(dwellers, grid, populationCap(grid), data.nextDwellerId, dt, life);
+
+  return {
+    data: { ...data, resources, runtime, dwellers, nextDwellerId, time: data.time + dt },
+    events: [...events, ...life],
+  };
 }
 
 /** Avanza `seconds` en pasos fijos de SIM_STEP. Devuelve el resto no simulado. */

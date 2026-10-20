@@ -1,6 +1,7 @@
-import { Disc3, Droplets, Users, Utensils, Wrench, Zap } from 'lucide-react';
+import { Disc3, Droplets, Smile, Users, Utensils, Wrench, Zap } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useMemo } from 'react';
+import { globalHappiness, populationCap } from '../core/Dwellers';
 import { storageCap } from '../core/Economy';
 import { RESOURCE_NAMES } from '../core/Production';
 import { requiredEnergy } from '../core/Simulation';
@@ -51,10 +52,12 @@ export function TopBar() {
       food: storageCap(grid, 'food'),
       water: storageCap(grid, 'water'),
       required: requiredEnergy(grid),
+      population: populationCap(grid),
     }),
     [grid],
   );
   const alive = Object.values(dwellers).filter((d) => d.alive).length;
+  const happiness = Math.round(globalHappiness({ dwellers }) * 100);
 
   return (
     <header className="pointer-events-auto absolute inset-x-0 top-0 flex items-center gap-2 overflow-x-auto border-b-2 border-bunker-600 bg-bunker-800/95 px-3 py-1.5 shadow-lg scrollbar-none">
@@ -65,11 +68,21 @@ export function TopBar() {
         type="button"
         onClick={() => setDwellersOpen(true)}
         className="flex items-center gap-2 rounded-lg bg-bunker-900/70 px-3 py-2 hover:bg-bunker-600"
-        title="Habitantes"
+        title={`Habitantes (máximo ${caps.population}, sube con Salas de Descanso)`}
       >
         <Users size={18} />
-        <span className="font-bold tabular-nums">{alive}</span>
+        <span className="font-bold tabular-nums">
+          {alive}
+          <span className="font-normal text-pvc/50">/{caps.population}</span>
+        </span>
       </button>
+      <div
+        className="flex items-center gap-1.5 rounded-lg bg-bunker-900/70 px-3 py-2"
+        title="Felicidad global: por encima del 50% acelera la producción; por debajo la frena"
+      >
+        <Smile size={18} className={happiness >= 50 ? 'text-emerald-300' : 'text-red-300'} />
+        <span className="font-bold tabular-nums">{happiness}%</span>
+      </div>
       <div className="ml-auto flex items-center gap-2">
         <div className="flex items-center gap-1.5 rounded-lg bg-bunker-900/70 px-3 py-2" title="Codos de PVC">
           <Wrench size={16} className="text-tape" />

@@ -22,7 +22,9 @@ src/
 │   ├── GridManager.ts   Construcción, conectividad, fusión, mejora, demolición, rocas
 │   ├── Economy.ts       Costos, reembolsos, capacidad, eficiencia y almacenamiento
 │   ├── Bunker.ts        Partida nueva y operaciones que arrastran habitantes/temporizadores
-│   ├── Dwellers.ts      Habitantes (stats P.A.T.R.O.N., HP, intoxicación, asignación)
+│   ├── Dwellers.ts      Habitantes (stats P.A.T.R.O.N., parentesco, niveles, población, asignación)
+│   ├── LifeCycle.ts     Niveles, felicidad, cortejo, embarazo, nacimiento y niñez
+│   ├── Pathfinding.ts   Rutas entre salas (Dijkstra; ascensores como aristas verticales)
 │   ├── Production.ts    Ciclos de producción, recolección y Modo Exprés
 │   ├── Simulation.ts    Tick determinista: energía por distancia, consumo, salud, incidentes
 │   ├── GameLoop.ts      Reloj maestro (tiempo real → pasos fijos de simulación)
@@ -32,13 +34,16 @@ src/
 │   ├── BunkerStage.ts   Cámara (paneo, zoom con rueda y pinch) e input
 │   ├── RoomSprite.ts    Dibujo procedural de salas y rocas
 │   ├── StatusSprite.ts  Progreso, iconos de recolección, apagones e incidentes (cada frame)
+│   ├── DwellerSprite.ts Habitantes: dibujo, caminata por waypoints y arrastre
 │   └── TerrainSprite.ts Cielo, superficie y subsuelo
-└── ui/        Interfaz React + Tailwind (TopBar, BuildMenu, SelectionPanel, DwellersPanel, Toast)
+└── ui/        Interfaz React + Tailwind (TopBar, BuildMenu, SelectionPanel, DwellersPanel, PatronModal, Toast)
 ```
 
 Reglas de dependencia: `core/` no importa nada del resto; `canvas/` y `ui/` leen el store y despachan acciones, nunca mutan el estado directamente.
 
-La simulación (`Simulation.simulate`) es pura y no usa RNG ni reloj: el mismo estado y el mismo `dt` dan siempre el mismo resultado. La aleatoriedad solo entra en acciones del jugador (recolectar, Exprés) a través de un `Rng` inyectado.
+La simulación (`Simulation.simulate`) es pura y no usa RNG ni reloj: el mismo estado y el mismo `dt` dan siempre el mismo resultado. La aleatoriedad solo entra en acciones del jugador (recolectar, Exprés) a través de un `Rng` inyectado; los nacimientos usan un RNG derivado del propio estado, así que también son reproducibles.
+
+El movimiento de los habitantes es solo visual (`canvas/DwellerSprite`): una asignación cuenta para la producción al instante y el habitante camina hasta su sala con la ruta de `core/Pathfinding`. Así el guardado no depende de posiciones en pantalla.
 
 ## Controles
 
@@ -46,5 +51,6 @@ La simulación (`Simulation.simulate`) es pura y no usa RNG ni reloj: el mismo e
 - **Construir**: elegir una sala en la barra inferior y tocar un hueco verde. `Esc` cancela.
 - **Tocar una sala**: ver detalles, mejorar (hasta nivel 3) o demoler.
 - **Tocar una roca**: romperla pagando Codos de PVC.
-- **Habitantes**: en el panel de una sala, “Asignar habitante…”. El botón de población abre la lista completa.
+- **Habitantes**: arrastrarlos a otra sala (verde = válida, rojo = no). Tocar uno abre su ficha P.A.T.R.O.N. También se asignan desde el panel de la sala; el botón de población abre la lista completa.
+- **Reproducción**: un hombre y una mujer adultos sin parentesco en una Sala de Descanso se cortejan; luego vienen embarazo, nacimiento y niñez (los niños comen pero no trabajan).
 - **Producción**: tocar el icono flotante recolecta todas las salas listas de ese recurso. **Exprés** produce al instante con un % de fallo; si falla, provoca un incidente.

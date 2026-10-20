@@ -1,6 +1,8 @@
 import {
   CODOS_CHANCE_MAX,
   CODOS_CHANCE_PER_R,
+  HAPPINESS_SPEED_MIN,
+  HAPPINESS_SPEED_RANGE,
   INCIDENT_HP_PER_BLOCK,
   MIN_CYCLE_FACTOR,
   REFERENCE_STAT,
@@ -43,15 +45,17 @@ export function statSum(workers: Dweller[], stat: PatronStat): number {
 /**
  * Segundos que tarda un ciclo con los trabajadores actuales, o null si la sala
  * no produce o está vacía. Una sala llena con stat media REFERENCE_STAT tarda
- * exactamente cycleSeconds; mejores stats o más gente lo acortan.
+ * exactamente cycleSeconds; mejores stats o más gente lo acortan. La felicidad
+ * global (0..1) acelera o frena el ciclo; 0.5 es neutra.
  */
-export function cycleTime(room: Room, workers: Dweller[]): number | null {
+export function cycleTime(room: Room, workers: Dweller[], happiness = 0.5): number | null {
   const def = ROOM_DEFS[room.type];
   if (!def.produces || !def.stat || workers.length === 0) return null;
   const sum = statSum(workers, def.stat);
   if (sum <= 0) return null;
   const t = (def.cycleSeconds * roomCapacity(room) * REFERENCE_STAT) / sum;
-  return Math.max(t, def.cycleSeconds * MIN_CYCLE_FACTOR);
+  const speed = HAPPINESS_SPEED_MIN + happiness * HAPPINESS_SPEED_RANGE;
+  return Math.max(t / speed, def.cycleSeconds * MIN_CYCLE_FACTOR);
 }
 
 export function cycleYield(room: Room): number {

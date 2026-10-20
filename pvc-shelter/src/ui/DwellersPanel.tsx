@@ -1,6 +1,6 @@
-import { Skull, X } from 'lucide-react';
+import { Baby, Heart, Skull, X } from 'lucide-react';
 import { ROOM_DEFS } from '../core/config';
-import { PATRON_KEYS, PATRON_NAMES } from '../core/Dwellers';
+import { isAdult, PATRON_KEYS, PATRON_NAMES } from '../core/Dwellers';
 import { useGameStore } from '../store/useGameStore';
 import { HealthBar } from './HealthBar';
 
@@ -10,7 +10,7 @@ export function DwellersPanel() {
   const dwellers = useGameStore((s) => s.dwellers);
   const rooms = useGameStore((s) => s.grid.rooms);
   const setOpen = useGameStore((s) => s.setDwellersOpen);
-  const select = useGameStore((s) => s.select);
+  const openDweller = useGameStore((s) => s.openDweller);
 
   if (!open) return null;
   const list = Object.values(dwellers).sort((a, b) => Number(b.alive) - Number(a.alive) || a.name.localeCompare(b.name));
@@ -30,16 +30,18 @@ export function DwellersPanel() {
             <li key={d.id}>
               <button
                 type="button"
-                disabled={!room}
-                onClick={() => room && select({ kind: 'room', id: room.id })}
-                className={`w-full rounded-lg bg-bunker-900/70 p-2 text-left enabled:hover:bg-bunker-600 ${d.alive ? '' : 'opacity-50'}`}
+                onClick={() => openDweller(d.id)}
+                className={`w-full rounded-lg bg-bunker-900/70 p-2 text-left hover:bg-bunker-600 ${d.alive ? '' : 'opacity-50'}`}
               >
                 <div className="flex items-center gap-2 text-sm">
                   {!d.alive && <Skull size={14} className="text-red-400" />}
                   <span className="font-bold">{d.name}</span>
                   <span className="text-xs text-pvc/50">{d.sex === 'M' ? '♂' : '♀'} · Nv {d.level}</span>
+                  {d.alive && !isAdult(d) && <Baby size={14} className="text-emerald-300" aria-label="Niño" />}
+                  {d.pregnancy && <Baby size={14} className="text-pink-300" aria-label="Embarazada" />}
+                  {d.courtship && <Heart size={14} className="text-pink-400" aria-label="Cortejando" />}
                   <span className="ml-auto text-xs text-pvc/60">
-                    {!d.alive ? 'Fallecido' : room ? ROOM_DEFS[room.type].name : 'Sin asignar'}
+                    {!d.alive ? 'Fallecido' : room ? ROOM_DEFS[room.type].name : isAdult(d) ? 'Sin asignar' : 'Paseando'}
                   </span>
                 </div>
                 {d.alive && <HealthBar dweller={d} className="mt-1.5" />}

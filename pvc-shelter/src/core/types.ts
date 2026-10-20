@@ -64,8 +64,9 @@ export interface Dweller {
   name: string;
   sex: 'M' | 'F';
   stats: PatronStats;
+  /** 1 a MAX_DWELLER_LEVEL. */
   level: number;
-  /** XP acumulada; la subida de nivel llega en el Sprint 3. */
+  /** XP acumulada dentro del nivel actual. */
   xp: number;
   hp: number;
   maxHp: number;
@@ -73,6 +74,15 @@ export interface Dweller {
   intox: number;
   roomId: string | null;
   alive: boolean;
+  /** 0 a 100. La media de los adultos da la felicidad global. */
+  happiness: number;
+  /** [padre, madre] si nació en el búnker; evita parejas entre familiares. */
+  parents: [string, string] | null;
+  /** Segundos que le faltan para ser adulto (0 = adulto). Los niños no trabajan. */
+  childTime: number;
+  pregnancy: { fatherId: string; elapsed: number } | null;
+  /** Cortejo en curso en la Sala de Descanso (solo se guarda en la mujer de la pareja). */
+  courtship: { partnerId: string; progress: number } | null;
 }
 
 export type IncidentKind = 'fire' | 'roaches';

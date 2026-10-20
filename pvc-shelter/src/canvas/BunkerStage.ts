@@ -1,11 +1,12 @@
 import { Application, Container, Graphics, Text } from 'pixi.js';
 import { ROOM_DEFS } from '../core/config';
-import { dwellersInRoom } from '../core/Dwellers';
+import { assignDweller, dwellersInRoom } from '../core/Dwellers';
 import { buildCost, roomCapacity } from '../core/Economy';
 import { findRockAt, findRoomAt, getValidPlacements, roomWidth } from '../core/GridManager';
 import type { Placement } from '../core/GridManager';
 import { useGameStore } from '../store/useGameStore';
 import { cycleTime, getRuntime } from '../core/Production';
+import { DwellerLayer } from './DwellerSprite';
 import { createRockView, createRoomView } from './RoomSprite';
 import { drawRoomStatus, READY_ICON_RADIUS, readyIconCenter } from './StatusSprite';
 import { createTerrainView, worldBounds } from './TerrainSprite';
@@ -34,6 +35,7 @@ export class BunkerStage {
   private readonly roomLayer = new Container();
   /** Estado dinámico (progreso, incidentes, energía), redibujado cada frame. */
   private readonly statusLayer = new Graphics();
+  private readonly dwellers = new DwellerLayer();
   private readonly overlay = new Graphics();
   private readonly ghostLabel = new Text({
     text: '',
@@ -54,6 +56,9 @@ export class BunkerStage {
   private worldOrigin: Point = { x: 0, y: 0 };
   private dragged = false;
   private pinch: { dist: number; scale: number } | null = null;
+  /** Habitante agarrado con el puntero; `active` cuando ya superó el umbral de arrastre. */
+  private dwellerGrab: { id: string; origin: Point; active: boolean } | null = null;
+  private dropTarget: { roomId: string; valid: boolean } | null = null;
 
   async init(host: HTMLElement): Promise<void> {
     const app = new Application();
@@ -74,7 +79,7 @@ export class BunkerStage {
     app.canvas.style.touchAction = 'none';
     app.canvas.style.display = 'block';
 
-    this.world.addChild(this.terrainLayer, this.rockLayer, this.roomLayer, this.statusLayer, this.overlay, this.ghostLabel);
+    this.world.addChild(this.terrainLayer, this.rockLayer, this.roomLayer, this.dwellers.container, this.statusLayer, this.overlay, this.ghostLabel);
     this.ghostLabel.anchor.set(0.5);
     this.ghostLabel.visible = false;
     app.stage.addChild(this.world);
@@ -83,6 +88,7 @@ export class BunkerStage {
     app.renderer.on('resize', this.handleResize);
 
     app.ticker.add(this.drawStatus);
+    app.ticker.add(this.updateDwellers);
     this.sync(useGameStore.getState(), null);
     this.unsubscribe = useGameStore.subscribe((state, prev) => this.sync(state, prev));
     this.focusEntrance();
@@ -213,6 +219,16 @@ export class BunkerStage {
       this.ghostLabel.visible = true;
     }
 
+    if (this.dropTarget) {
+      const room = state.grid.rooms[this.dropTarget.roomId];
+      if (room) {
+        const color = this.dropTarget.valid ? 0x3ddc84 : 0xff5a4a;
+        g.rect(room.col * CELL_W, room.floor * FLOOR_H, roomWidth(room) * CELL_W, FLOOR_H)
+          .fill({ color, alpha: 0.2 })
+          .stroke({ width: 4, color });
+      }
+    }
+
     const sel = state.selection;
     if (sel?.kind === 'room') {
       const room = state.grid.rooms[sel.id];
@@ -258,9 +274,17 @@ export class BunkerStage {
     (e.currentTarget as HTMLCanvasElement).setPointerCapture(e.pointerId);
     this.pointers.set(e.pointerId, this.localPoint(e));
     if (this.pointers.size === 1) {
-      this.startDrag(this.localPoint(e));
+      const p = this.localPoint(e);
       this.dragged = false;
+      const id = useGameStore.getState().buildType ? null : this.dwellers.hitTest(this.screenToWorld(p));
+      if (id) {
+        this.dwellerGrab = { id, origin: p, active: false };
+        this.dragOrigin = null;
+        return;
+      }
+      this.startDrag(p);
     } else if (this.pointers.size === 2) {
+      this.cancelDwellerDrag();
       const [a, b] = [...this.pointers.values()];
       this.pinch = { dist: Math.hypot(a.x - b.x, a.y - b.y), scale: this.world.scale.x };
       this.dragged = true; // un gesto de dos dedos nunca es un clic
@@ -275,6 +299,10 @@ export class BunkerStage {
     }
     this.pointers.set(e.pointerId, p);
 
+    if (this.dwellerGrab) {
+      this.moveDwellerDrag(p);
+      return;
+    }
     if (this.pointers.size >= 2 && this.pinch) {
       const [a, b] = [...this.pointers.values()];
       const dist = Math.hypot(a.x - b.x, a.y - b.y);
@@ -294,15 +322,70 @@ export class BunkerStage {
   };
 
   private readonly onPointerUp = (e: PointerEvent) => {
+    const grab = this.dwellerGrab;
     const wasTap = this.pointers.size === 1 && !this.dragged;
     this.releasePointer(e.pointerId);
-    if (wasTap) this.handleTap(this.localPoint(e));
+    if (grab) this.finishDwellerDrag(grab);
+    else if (wasTap) this.handleTap(this.localPoint(e));
   };
 
   private readonly onPointerCancel = (e: PointerEvent) => {
     this.dragged = true;
+    this.cancelDwellerDrag();
     this.releasePointer(e.pointerId);
   };
+
+  // -------------------------------------------------------------------------
+  // Drag & drop de habitantes
+  // -------------------------------------------------------------------------
+
+  private readonly updateDwellers = () => {
+    if (!this.app) return;
+    // Tope de dt para que al volver de una pestaña dormida no "teletransporten".
+    this.dwellers.update(useGameStore.getState(), Math.min(this.app.ticker.deltaMS / 1000, 0.1));
+  };
+
+  private moveDwellerDrag(screen: Point): void {
+    const grab = this.dwellerGrab!;
+    if (!grab.active) {
+      if (Math.hypot(screen.x - grab.origin.x, screen.y - grab.origin.y) < DRAG_THRESHOLD) return;
+      grab.active = true;
+      this.dwellers.beginDrag(grab.id);
+    }
+    const world = this.screenToWorld(screen);
+    this.dwellers.dragTo(world);
+
+    const state = useGameStore.getState();
+    const room = findRoomAt(state.grid, Math.floor(world.y / FLOOR_H), Math.floor(world.x / CELL_W));
+    const dweller = state.dwellers[grab.id];
+    this.dropTarget =
+      room && dweller
+        ? { roomId: room.id, valid: room.id === dweller.roomId || assignDweller(state, grab.id, room.id).ok }
+        : null;
+    this.drawOverlay(state);
+  }
+
+  private finishDwellerDrag(grab: { id: string; active: boolean }): void {
+    const state = useGameStore.getState();
+    const target = this.dropTarget;
+    this.dwellerGrab = null;
+    this.dropTarget = null;
+    if (!grab.active) {
+      // Un toque sin arrastre abre la ficha del habitante.
+      state.openDweller(grab.id);
+      return;
+    }
+    this.dwellers.endDrag();
+    // Si la sala no es válida, assign() publica el motivo como aviso.
+    if (target && target.roomId !== state.dwellers[grab.id]?.roomId) state.assign(grab.id, target.roomId);
+    this.drawOverlay(useGameStore.getState());
+  }
+
+  private cancelDwellerDrag(): void {
+    if (this.dwellerGrab?.active) this.dwellers.endDrag();
+    this.dwellerGrab = null;
+    this.dropTarget = null;
+  }
 
   private readonly onPointerLeave = () => {
     if (this.pointers.size === 0 && this.hovered) {
@@ -352,7 +435,8 @@ export class BunkerStage {
   private updateHover(screen: Point): void {
     if (!this.app) return;
     if (this.placements.length === 0) {
-      this.app.canvas.style.cursor = this.pickReadyIcon(this.screenToWorld(screen)) ? 'pointer' : '';
+      const world = this.screenToWorld(screen);
+      this.app.canvas.style.cursor = this.pickReadyIcon(world) ? 'pointer' : this.dwellers.hitTest(world) ? 'grab' : '';
       return;
     }
     const next = this.pickPlacement(this.screenToWorld(screen));

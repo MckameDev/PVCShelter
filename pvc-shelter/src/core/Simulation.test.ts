@@ -99,7 +99,8 @@ describe('ciclos de producción', () => {
     let { data, roomId } = build(newGame(), 'power', 0, ELEVATOR_COL + 1);
     data = assignAll(data, roomId, 2);
     const t = cycleTime(data.grid.rooms[roomId], dwellersInRoom(data, roomId))!;
-    data = advance(data, t + 1).data;
+    // Con felicidad 0% el ciclo dura hasta t / 0.75: margen para cualquier felicidad.
+    data = advance(data, t / 0.75 + 1).data;
     expect(data.runtime[roomId].ready).toBe(true);
 
     const before = data.resources.energy;

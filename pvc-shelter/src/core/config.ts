@@ -232,3 +232,39 @@ export const INCIDENT_DPS_PER_BLOCK = 2;
 export const DWELLER_BASE_DPS = 1;
 export const DWELLER_DPS_PER_P = 0.2;
 export const INCIDENT_REWARD_PER_BLOCK = 15;
+
+// ---------------------------------------------------------------------------
+// Sprint 3: habitantes, niveles, felicidad y reproducción
+// ---------------------------------------------------------------------------
+
+export const MAX_DWELLER_LEVEL = 50;
+/** XP necesaria para pasar del nivel n al n+1: XP_LEVEL_BASE × n^XP_LEVEL_EXP. */
+export const XP_LEVEL_BASE = 40;
+export const XP_LEVEL_EXP = 1.4;
+/** XP por segundo trabajando = stat de la sala × este factor (0.1 a 1 XP/s). */
+export const XP_PER_STAT_SECOND = 0.1;
+/** Codos al subir de nivel = nivel nuevo × este factor. */
+export const LEVEL_UP_CODOS = 10;
+/** HP máximo ganado al subir de nivel: base + Tenacidad (T) × factor. */
+export const LEVEL_UP_HP_BASE = 2;
+export const LEVEL_UP_HP_PER_T = 0.5;
+
+/** La felicidad converge hacia su objetivo a estos puntos por segundo. */
+export const HAPPINESS_RATE = 0.5;
+export const START_HAPPINESS = 60;
+/**
+ * Bono de felicidad global (0..1) al tiempo de producción: el ciclo se divide
+ * por (HAPPINESS_SPEED_MIN + h × HAPPINESS_SPEED_RANGE). Con 50% es neutro.
+ */
+export const HAPPINESS_SPEED_MIN = 0.75;
+export const HAPPINESS_SPEED_RANGE = 0.5;
+
+/** Cortejo con Optimismo (O) medio REFERENCE_STAT en ambos. */
+export const COURTSHIP_SECONDS = 60;
+export const PREGNANCY_SECONDS = 180;
+export const CHILDHOOD_SECONDS = 240;
+
+/** Población máxima: base + plazas por bloque de Sala de Descanso (× eficiencia de nivel). */
+export const POPULATION_BASE = 8;
+export const POPULATION_PER_LIVING_BLOCK = 4;
+export const POPULATION_HARD_CAP = 200;
