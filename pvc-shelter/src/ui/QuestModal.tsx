@@ -13,11 +13,16 @@ const TONE_CLASS = { info: 'text-pvc/70', good: 'text-emerald-300', bad: 'text-r
 
 /** Vista de la misión: salas con niebla de guerra, combate, críticos y botín. */
 export function QuestModal() {
-  const open = useGameStore((s) => s.questOpen);
+  const openId = useGameStore((s) => s.openQuestId);
+  // key: el estado del minijuego no se comparte entre misiones.
+  return openId ? <QuestView key={openId} openId={openId} /> : null;
+}
+
+function QuestView({ openId }: { openId: string }) {
   const game = useGameStore();
   const [aiming, setAiming] = useState(false);
-  const quest = game.quest;
-  if (!open || !quest) return null;
+  const quest = game.quests.find((q) => q.id === openId);
+  if (!quest) return null;
   const def = questById(quest.questId);
   if (!def) return null;
 
@@ -27,7 +32,7 @@ export function QuestModal() {
   const isLast = quest.roomIndex === def.rooms.length - 1;
 
   return (
-    <div className="pointer-events-auto absolute inset-0 grid place-items-center bg-black/60 p-3" onClick={() => game.setQuestOpen(false)}>
+    <div className="pointer-events-auto absolute inset-0 grid place-items-center bg-black/60 p-3" onClick={() => game.openQuest(null)}>
       <section
         role="dialog"
         aria-label={`Misión: ${def.name}`}
@@ -39,7 +44,7 @@ export function QuestModal() {
             <h2 className="text-lg font-bold">{def.name}</h2>
             <p className="text-xs text-pvc/60">{def.description}</p>
           </div>
-          <button type="button" aria-label="Cerrar" onClick={() => game.setQuestOpen(false)} className="rounded p-1 hover:bg-bunker-600">
+          <button type="button" aria-label="Cerrar" onClick={() => game.openQuest(null)} className="rounded p-1 hover:bg-bunker-600">
             <X size={18} />
           </button>
         </header>
@@ -108,7 +113,7 @@ export function QuestModal() {
                       type="button"
                       disabled={fighting}
                       title={fighting ? 'Primero despeja la sala' : 'Recoger'}
-                      onClick={() => game.pickQuestLoot(s.id)}
+                      onClick={() => game.pickQuestLoot(quest.id, s.id)}
                       className="flex animate-pulse items-center gap-1 rounded-md border border-tape/70 bg-tape/15 px-2 py-1 text-xs font-bold text-tape hover:bg-tape/30 disabled:animate-none disabled:opacity-40"
                     >
                       <Sparkles size={12} /> {s.label}
@@ -135,7 +140,7 @@ export function QuestModal() {
                       type="button"
                       aria-label={`Usar Venda en ${d.name}`}
                       title={`Venda (${game.resources.stimpaks})`}
-                      onClick={() => game.healInQuest(d.id)}
+                      onClick={() => game.healInQuest(quest.id, d.id)}
                       className="rounded border border-red-400/60 p-1 hover:bg-red-500/20"
                     >
                       <Bandage size={12} />
@@ -157,7 +162,7 @@ export function QuestModal() {
                   {aiming && quest.critCharge >= 1 ? (
                     <AimMinigame
                       onShoot={(accuracy) => {
-                        game.fireCrit(accuracy);
+                        game.fireCrit(quest.id, accuracy);
                         setAiming(false);
                       }}
                     />
@@ -181,7 +186,7 @@ export function QuestModal() {
           <button
             type="button"
             disabled={fighting}
-            onClick={() => game.advanceQuest()}
+            onClick={() => game.advanceQuest(quest.id)}
             className="w-full rounded-lg border-2 border-sky-400/70 bg-sky-500/15 py-2 font-bold hover:bg-sky-500/30 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {isLast ? 'Completar misión y volver' : 'Avanzar a la siguiente sala'}
@@ -192,7 +197,8 @@ export function QuestModal() {
         {quest.status === 'done' && (
           <button
             type="button"
-            onClick={() => game.finishQuest()}
+            onClick={() => game.finishQuest(quest.id)}
+
             className="w-full rounded-lg border-2 border-emerald-400/70 bg-emerald-500/15 py-2 font-bold hover:bg-emerald-500/30"
           >
             {quest.failed ? 'Recibir a la escuadra' : `Recibir botín: ${lootSummary(quest.loot)}`}

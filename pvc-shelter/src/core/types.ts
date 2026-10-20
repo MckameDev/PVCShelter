@@ -226,8 +226,9 @@ export interface GameData {
   raid: Raid | null;
   /** Exploradores en el Yermo, por id de habitante. */
   expeditions: Record<string, Expedition>;
-  /** Misión activa de la Oficina del Capataz (una a la vez). */
-  quest: ActiveQuest | null;
+  /** Misiones en curso: 1, o 2 con la Oficina del Capataz a nivel máximo. */
+  quests: ActiveQuest[];
+  nextQuestSerial: number;
   /** Misiones completadas con éxito (ids del catálogo). */
   questsDone: string[];
   /** Inspector Fisgón escondido en alguna sala, si lo hay. */
@@ -295,6 +296,9 @@ export interface LootSpot {
 }
 
 export interface ActiveQuest {
+  /** Id único de esta misión en curso (puede haber dos a la vez). */
+  id: string;
+  /** Id del catálogo (questCatalog.ts). */
   questId: string;
   squad: string[];
   status: 'traveling' | 'exploring' | 'returning' | 'done';

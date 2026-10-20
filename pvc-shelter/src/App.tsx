@@ -28,11 +28,11 @@ export default function App() {
       if (e.key !== 'Escape') return;
       const { buildType, cancelBuild, dwellersOpen, setDwellersOpen, select, dwellerModalId, openDweller } =
         useGameStore.getState();
-      const { inventoryOpen, setInventoryOpen, questOpen, setQuestOpen, expeditionDraft, setExpeditionDraft } =
+      const { inventoryOpen, setInventoryOpen, openQuestId, openQuest, expeditionDraft, setExpeditionDraft } =
         useGameStore.getState();
       const { wastelandOpen, setWastelandOpen } = useGameStore.getState();
       if (expeditionDraft) setExpeditionDraft(null);
-      else if (questOpen) setQuestOpen(false);
+      else if (openQuestId) openQuest(null);
       else if (dwellerModalId) openDweller(null);
       else if (wastelandOpen) setWastelandOpen(false);
       else if (inventoryOpen) setInventoryOpen(false);

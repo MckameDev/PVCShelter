@@ -1,4 +1,4 @@
-import { CRIT_MULTIPLIERS, QUEST_CRIT_CHARGE_SECONDS, QUEST_SQUAD_SIZE, STIMPAK_HEAL } from './config';
+import { CRIT_MULTIPLIERS, QUEST_CRIT_CHARGE_SECONDS, QUEST_SQUAD_SIZE, QUESTS_AT_MAX_OVERSEER, STIMPAK_HEAL } from './config';
 import { aliveEnemies, damageEnemies, dwellerDps } from './Combat';
 import { effectiveMaxHp, isAdult } from './Dwellers';
 import { ITEMS } from './items';
@@ -11,6 +11,7 @@ import type { ActiveQuest, Dweller, GameData, LogEntry, Loot, Rarity, Result } f
 
 // Misiones activas: viaje, exploración sala a sala con niebla de guerra,
 // combate semiautomático en la simulación y críticos manuales del jugador.
+// Puede haber 1 misión a la vez, o 2 con la Oficina del Capataz a nivel 3.
 
 export type QuestEvent =
   | { type: 'quest-arrived'; questId: string }
@@ -20,12 +21,34 @@ export type QuestEvent =
 /** Codos que vale un plano que ya se conocía (se vende en lugar de duplicarse). */
 const KNOWN_RECIPE_CODOS = 100;
 
-export function hasWorkingOverseer(data: GameData): boolean {
-  return Object.values(data.grid.rooms).some((r) => r.type === 'overseer' && getRuntime(data, r.id).powered);
+/** Nivel de la mejor Oficina del Capataz con energía y sin averías (0 si no hay). */
+export function overseerLevel(data: GameData): number {
+  let level = 0;
+  for (const r of Object.values(data.grid.rooms)) {
+    const rt = getRuntime(data, r.id);
+    if (r.type === 'overseer' && rt.powered && !rt.incident) level = Math.max(level, r.level);
+  }
+  return level;
+}
+
+export const hasWorkingOverseer = (data: GameData) => overseerLevel(data) > 0;
+
+/** Misiones que se pueden tener a la vez según el nivel de la Oficina. */
+export function maxActiveQuests(data: GameData): number {
+  const level = overseerLevel(data);
+  if (level === 0) return 0;
+  return level >= 3 ? QUESTS_AT_MAX_OVERSEER : 1;
 }
 
 export const squadMembers = (data: Pick<GameData, 'dwellers'>, quest: ActiveQuest): Dweller[] =>
   quest.squad.map((id) => data.dwellers[id]).filter((d): d is Dweller => !!d);
+
+export const findQuest = (data: Pick<GameData, 'quests'>, id: string) => data.quests.find((q) => q.id === id);
+
+const replaceQuest = (data: GameData, quest: ActiveQuest): GameData => ({
+  ...data,
+  quests: data.quests.map((q) => (q.id === quest.id ? quest : q)),
+});
 
 function questLog(quest: ActiveQuest, text: string, tone: LogEntry['tone']): ActiveQuest {
   return { ...quest, log: pushLog(quest.log, { t: 0, text, tone }) };
@@ -46,8 +69,12 @@ function enterRoom(quest: ActiveQuest, def: QuestDef, index: number): ActiveQues
 export function canStartQuest(data: GameData, questId: string, squad: string[]): Result<QuestDef> {
   const def = questById(questId);
   if (!def) return fail('Esa misión no existe.');
-  if (!hasWorkingOverseer(data)) return fail('Necesitas una Oficina del Capataz con energía.');
-  if (data.quest) return fail('Ya hay una escuadra en misión.');
+  const max = maxActiveQuests(data);
+  if (max === 0) return fail('Necesitas una Oficina del Capataz con energía y sin averías.');
+  if (data.quests.length >= max) {
+    return fail(max === 1 ? 'Ya hay una escuadra en misión (mejora la Oficina a nivel 3 para enviar 2).' : 'Ya hay 2 escuadras en misión.');
+  }
+  if (data.quests.some((q) => q.questId === questId)) return fail('Ya hay una escuadra en esa misión.');
   const unique = [...new Set(squad)];
   if (unique.length === 0 || unique.length > QUEST_SQUAD_SIZE) {
     return fail(`La escuadra debe tener entre 1 y ${QUEST_SQUAD_SIZE} habitantes.`);
@@ -69,6 +96,7 @@ export function startQuest(data: GameData, questId: string, squad: string[]): Re
   const dwellers = { ...data.dwellers };
   for (const id of members) dwellers[id] = { ...dwellers[id], location: 'quest', roomId: null, courtship: null, training: 0 };
   const quest: ActiveQuest = {
+    id: `quest-${data.nextQuestSerial}`,
     questId,
     squad: members,
     status: 'traveling',
@@ -82,10 +110,10 @@ export function startQuest(data: GameData, questId: string, squad: string[]): Re
     failed: false,
     log: [{ t: 0, text: `La escuadra parte hacia ${def.name}.`, tone: 'info' }],
   };
-  return ok({ ...data, dwellers, quest });
+  return ok({ ...data, dwellers, quests: [...data.quests, quest], nextQuestSerial: data.nextQuestSerial + 1 });
 }
 
-/** Avanza la misión `dt` segundos. MUTA las copias de habitantes del tick. */
+/** Avanza una misión `dt` segundos. MUTA las copias de habitantes del tick. */
 export function updateQuest(
   quest: ActiveQuest,
   dwellers: Record<string, Dweller>,
@@ -136,12 +164,12 @@ export function updateQuest(
 }
 
 /** Pasa a la siguiente sala (o completa la misión si era la última). */
-export function advanceQuest(data: GameData): Result<GameData> {
-  const q = data.quest;
+export function advanceQuest(data: GameData, id: string): Result<GameData> {
+  const q = findQuest(data, id);
   const def = q && questById(q.questId);
-  if (!q || !def || q.status !== 'exploring') return fail('No hay ninguna escuadra explorando.');
+  if (!q || !def || q.status !== 'exploring') return fail('Esa escuadra no está explorando.');
   if (aliveEnemies(q.enemies).length > 0) return fail('Primero hay que despejar la sala.');
-  if (q.roomIndex < def.rooms.length - 1) return ok({ ...data, quest: enterRoom(q, def, q.roomIndex + 1) });
+  if (q.roomIndex < def.rooms.length - 1) return ok(replaceQuest(data, enterRoom(q, def, q.roomIndex + 1)));
 
   const loot: Loot = { ...q.loot, codos: q.loot.codos + def.rewardCodos };
   const done = questLog(
@@ -149,12 +177,12 @@ export function advanceQuest(data: GameData): Result<GameData> {
     `¡Misión completada! +${def.rewardCodos} Codos de recompensa.`,
     'good',
   );
-  return ok({ ...data, quest: done });
+  return ok(replaceQuest(data, done));
 }
 
 /** Recoge un botín brillante de la sala actual. Los planos ya conocidos se venden. */
-export function pickLootSpot(data: GameData, spotId: string): Result<GameData> {
-  const q = data.quest;
+export function pickLootSpot(data: GameData, id: string, spotId: string): Result<GameData> {
+  const q = findQuest(data, id);
   const spot = q?.spots.find((s) => s.id === spotId);
   if (!q || !spot || q.status !== 'exploring') return fail('Ese botín no está disponible.');
   if (aliveEnemies(q.enemies).length > 0) return fail('Primero hay que despejar la sala.');
@@ -174,8 +202,7 @@ export function pickLootSpot(data: GameData, spotId: string): Result<GameData> {
       text += ` — ¡plano de ${ITEMS[spot.recipe].name}!`;
     }
   }
-  const next = questLog({ ...q, loot, spots: q.spots.filter((s) => s.id !== spotId) }, `${text}.`, 'good');
-  return ok({ ...data, quest: next });
+  return ok(replaceQuest(data, questLog({ ...q, loot, spots: q.spots.filter((s) => s.id !== spotId) }, `${text}.`, 'good')));
 }
 
 /** Resultado del minijuego de puntería: precisión 0 (borde) a 1 (centro). */
@@ -184,8 +211,8 @@ export function critMultiplier(accuracy: number) {
 }
 
 /** Crítico manual: daño equivalente a 2 s de ataque de la escuadra × multiplicador. */
-export function questCrit(data: GameData, accuracy: number): Result<{ data: GameData; label: string; damage: number }> {
-  const q = data.quest;
+export function questCrit(data: GameData, id: string, accuracy: number): Result<{ data: GameData; label: string; damage: number }> {
+  const q = findQuest(data, id);
   if (!q || q.status !== 'exploring' || aliveEnemies(q.enemies).length === 0) return fail('No hay combate en curso.');
   if (q.critCharge < 1) return fail('El crítico aún no está cargado.');
   const crit = critMultiplier(Math.min(1, Math.max(0, accuracy)));
@@ -196,12 +223,12 @@ export function questCrit(data: GameData, accuracy: number): Result<{ data: Game
   let next: ActiveQuest = { ...q, enemies: damageEnemies(q.enemies, damage), critCharge: 0 };
   next = questLog(next, `${crit.label}${damage > 0 ? ` (${Math.round(damage)} de daño)` : ''}`, damage > 0 ? 'good' : 'bad');
   if (aliveEnemies(next.enemies).length === 0) next = questLog(next, 'Sala despejada.', 'good');
-  return ok({ data: { ...data, quest: next }, label: crit.label, damage });
+  return ok({ data: replaceQuest(data, next), label: crit.label, damage });
 }
 
 /** Usa una Venda del búnker en un miembro de la escuadra. */
-export function questHeal(data: GameData, dwellerId: string): Result<GameData> {
-  const q = data.quest;
+export function questHeal(data: GameData, id: string, dwellerId: string): Result<GameData> {
+  const q = findQuest(data, id);
   const d = data.dwellers[dwellerId];
   if (!q || !q.squad.includes(dwellerId) || !d?.alive) return fail('No está disponible.');
   if (data.resources.stimpaks < 1) return fail('No quedan Vendas Caseras.');
@@ -214,12 +241,17 @@ export function questHeal(data: GameData, dwellerId: string): Result<GameData> {
 }
 
 /** Cierra una misión terminada: entrega el botín y devuelve a la escuadra al búnker. */
-export function collectQuest(data: GameData): Result<{ data: GameData; scrapped: number; failed: boolean }> {
-  const q = data.quest;
+export function collectQuest(data: GameData, id: string): Result<{ data: GameData; scrapped: number; failed: boolean; loot: Loot }> {
+  const q = findQuest(data, id);
   if (!q || q.status !== 'done') return fail('La escuadra aún no ha vuelto.');
   const applied = q.failed ? { data, scrapped: 0 } : applyLoot(data, q.loot);
   const dwellers = { ...applied.data.dwellers };
-  for (const id of q.squad) if (dwellers[id]) dwellers[id] = { ...dwellers[id], location: 'bunker' };
+  for (const member of q.squad) if (dwellers[member]) dwellers[member] = { ...dwellers[member], location: 'bunker' };
   const questsDone = q.failed || data.questsDone.includes(q.questId) ? data.questsDone : [...data.questsDone, q.questId];
-  return ok({ data: { ...applied.data, dwellers, quest: null, questsDone }, scrapped: applied.scrapped, failed: q.failed });
+  return ok({
+    data: { ...applied.data, dwellers, quests: applied.data.quests.filter((x) => x.id !== id), questsDone },
+    scrapped: applied.scrapped,
+    failed: q.failed,
+    loot: q.loot,
+  });
 }

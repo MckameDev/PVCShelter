@@ -484,9 +484,10 @@ export class BunkerStage {
     const happiness = globalHappiness(state);
     for (const room of Object.values(state.grid.rooms)) {
       const capacity = roomCapacity(room);
-      if (capacity === 0) continue;
-      const workers = dwellersInRoom(state, room.id);
       const runtime = getRuntime(state, room.id);
+      // Las salas sin puestos solo se dibujan cuando tienen una avería.
+      if (capacity === 0 && !runtime.incident) continue;
+      const workers = dwellersInRoom(state, room.id);
       drawRoomStatus(
         g,
         {

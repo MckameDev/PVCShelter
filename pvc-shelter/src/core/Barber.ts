@@ -3,10 +3,13 @@ import { getRuntime } from './Production';
 import { fail, ok } from './types';
 import type { Appearance, GameData, Result } from './types';
 
-// Peluquería: con una Peluquería construida y con energía se puede cambiar la apariencia.
+// Peluquería: con una Peluquería construida, con energía y sin averías se puede cambiar la apariencia.
 
 export function hasWorkingBarber(data: GameData): boolean {
-  return Object.values(data.grid.rooms).some((r) => r.type === 'barber' && getRuntime(data, r.id).powered);
+  return Object.values(data.grid.rooms).some((r) => {
+    const rt = getRuntime(data, r.id);
+    return r.type === 'barber' && rt.powered && !rt.incident;
+  });
 }
 
 export function restyleDweller(data: GameData, dwellerId: string, appearance: Appearance): Result<GameData> {

@@ -1,12 +1,29 @@
 import { describe, expect, it } from 'vitest';
 import { applyRoomChange, createNewGame } from './Bunker';
-import { BLOCK_CELLS, CRIT_MULTIPLIERS, INSPECTOR_VISIBLE_SECONDS, WASTELAND_EVENT_SECONDS } from './config';
+import { createIncident } from './Combat';
+import {
+  BLOCK_CELLS,
+  CRIT_MULTIPLIERS,
+  INSPECTOR_VISIBLE_SECONDS,
+  PASSIVE_INCIDENT_BURNOUT_SECONDS,
+  WASTELAND_EVENT_SECONDS,
+} from './config';
 import { assignDweller } from './Dwellers';
-import { placeRoom } from './GridManager';
+import { placeRoom, upgradeRoom } from './GridManager';
+import { repairCost, repairRoom } from './Incidents';
 import { catchInspector, inspectorReward } from './Inspector';
 import { ITEMS } from './items';
 import { questById } from './questCatalog';
-import { advanceQuest, canStartQuest, collectQuest, critMultiplier, pickLootSpot, questCrit, startQuest } from './Quests';
+import {
+  advanceQuest,
+  canStartQuest,
+  collectQuest,
+  critMultiplier,
+  maxActiveQuests,
+  pickLootSpot,
+  questCrit,
+  startQuest,
+} from './Quests';
 import { reviveDweller } from './Revival';
 import { advance, simulate } from './Simulation';
 import type { Dweller, GameData, Result, RoomType } from './types';
@@ -125,6 +142,7 @@ describe('misiones', () => {
     const { data } = build(newGame(), 'overseer');
     return data;
   }
+  const Q = (data: GameData) => data.quests[0];
 
   it('necesitan Oficina del Capataz y una escuadra de 1 a 3', () => {
     const data = newGame();
@@ -143,17 +161,17 @@ describe('misiones', () => {
     expect(data.dwellers[id].location).toBe('quest');
     const def = questById('hardware-store')!;
     data = advance(data, def.travelSeconds + 0.5).data;
-    expect(data.quest?.status).toBe('exploring');
-    expect(data.quest?.revealed).toEqual([true, false, false, false]);
-    expect(data.quest?.enemies.length).toBeGreaterThan(0);
+    expect(Q(data).status).toBe('exploring');
+    expect(Q(data).revealed).toEqual([true, false, false, false]);
+    expect(Q(data).enemies.length).toBeGreaterThan(0);
 
     // No se puede avanzar ni recoger botín con enemigos vivos.
-    expect(advanceQuest(data).ok).toBe(false);
-    expect(pickLootSpot(data, data.quest!.spots[0].id).ok).toBe(false);
+    expect(advanceQuest(data, Q(data).id).ok).toBe(false);
+    expect(pickLootSpot(data, Q(data).id, Q(data).spots[0].id).ok).toBe(false);
     data = advance(data, 30).data;
-    expect(data.quest?.enemies.every((e) => e.hp <= 0)).toBe(true);
-    data = unwrap(pickLootSpot(data, data.quest!.spots[0].id));
-    expect(data.quest?.loot.codos).toBeGreaterThan(0);
+    expect(Q(data).enemies.every((e) => e.hp <= 0)).toBe(true);
+    data = unwrap(pickLootSpot(data, Q(data).id, Q(data).spots[0].id));
+    expect(Q(data).loot.codos).toBeGreaterThan(0);
   });
 
   it('el crítico manual escala con la puntería', () => {
@@ -164,12 +182,13 @@ describe('misiones', () => {
     const id = firstId(data);
     data = unwrap(startQuest(data, 'landfill', [id]));
     data = advance(data, questById('landfill')!.travelSeconds + 0.25).data;
-    expect(questCrit(data, 1).ok).toBe(false); // aún sin cargar
-    const charged = { ...data, quest: { ...data.quest!, critCharge: 1 } };
-    const perfect = unwrap(questCrit(charged, 1)).damage;
-    const weak = unwrap(questCrit(charged, 0.4)).damage;
+    expect(questCrit(data, Q(data).id, 1).ok).toBe(false); // aún sin cargar
+    const charged = { ...data, quests: [{ ...Q(data), critCharge: 1 }] };
+    const qid = Q(data).id;
+    const perfect = unwrap(questCrit(charged, qid, 1)).damage;
+    const weak = unwrap(questCrit(charged, qid, 0.4)).damage;
     expect(perfect).toBeGreaterThan(weak);
-    expect(unwrap(questCrit(charged, 0)).damage).toBe(0);
+    expect(unwrap(questCrit(charged, qid, 0)).damage).toBe(0);
   });
 
   it('completar la misión da recompensa, planos y devuelve a la escuadra', () => {
@@ -177,25 +196,26 @@ describe('misiones', () => {
     const id = firstId(data);
     data = makeTough(data, id);
     data = unwrap(startQuest(data, 'hardware-store', [id]));
+    const qid = Q(data).id;
     const def = questById('hardware-store')!;
     data = advance(data, def.travelSeconds + 0.5).data;
     for (let room = 0; room < def.rooms.length; room++) {
       data = advance(data, 30).data;
-      for (const spot of data.quest!.spots) data = unwrap(pickLootSpot(data, spot.id));
-      data = unwrap(advanceQuest(data));
+      for (const spot of Q(data).spots) data = unwrap(pickLootSpot(data, qid, spot.id));
+      data = unwrap(advanceQuest(data, qid));
     }
-    expect(data.quest?.status).toBe('returning');
+    expect(Q(data).status).toBe('returning');
     data = advance(data, def.travelSeconds + 0.5).data;
-    expect(data.quest?.status).toBe('done');
+    expect(Q(data).status).toBe('done');
 
     const before = data.resources.codos;
-    const { data: after, failed } = unwrap(collectQuest(data));
+    const { data: after, failed } = unwrap(collectQuest(data, qid));
     expect(failed).toBe(false);
     expect(after.resources.codos).toBeGreaterThan(before + def.rewardCodos);
     expect(after.inventory.recipes).toContain('potato-cannon');
     expect(after.questsDone).toContain('hardware-store');
     expect(after.dwellers[id].location).toBe('bunker');
-    expect(after.quest).toBeNull();
+    expect(after.quests).toHaveLength(0);
   });
 
   it('si cae toda la escuadra vuelven sin botín', () => {
@@ -205,8 +225,56 @@ describe('misiones', () => {
     data = unwrap(startQuest(data, 'treatment-plant', [id]));
     const res = advance(data, questById('treatment-plant')!.travelSeconds + 10);
     expect(res.events.some((e) => e.type === 'quest-failed')).toBe(true);
-    expect(res.data.quest?.failed).toBe(true);
-    expect(res.data.quest?.loot.codos).toBe(0);
+    expect(Q(res.data).failed).toBe(true);
+    expect(Q(res.data).loot.codos).toBe(0);
+  });
+
+  it('1 misión a la vez; 2 con la Oficina del Capataz a nivel máximo', () => {
+    let { data, roomId } = build(newGame(), 'overseer');
+    const ids = Object.keys(data.dwellers);
+    expect(maxActiveQuests(data)).toBe(1);
+    data = unwrap(startQuest(data, 'hardware-store', [ids[0]]));
+    expect(canStartQuest(data, 'landfill', [ids[1]]).ok).toBe(false);
+
+    data = { ...data, grid: unwrap(upgradeRoom(unwrap(upgradeRoom(data.grid, roomId)).grid, roomId)).grid };
+    expect(maxActiveQuests(data)).toBe(2);
+    expect(canStartQuest(data, 'hardware-store', [ids[1]]).ok).toBe(false); // misma misión repetida
+    data = unwrap(startQuest(data, 'landfill', [ids[1]]));
+    expect(data.quests).toHaveLength(2);
+    expect(new Set(data.quests.map((q) => q.id)).size).toBe(2);
+    expect(canStartQuest(data, 'treatment-plant', [ids[2]]).ok).toBe(false);
+  });
+});
+
+describe('averías en salas sin puestos', () => {
+  function storageOnFire() {
+    const { data, roomId } = build(newGame(), 'storage');
+    const incident = createIncident('fire', data.grid.rooms[roomId]);
+    return { data: { ...data, runtime: { ...data.runtime, [roomId]: { ...data.runtime[roomId], incident } } }, roomId };
+  }
+
+  it('se apagan solas, sin propagarse ni dar recompensa', () => {
+    const { data, roomId } = storageOnFire();
+    const res = advance(data, PASSIVE_INCIDENT_BURNOUT_SECONDS + 1);
+    expect(res.data.runtime[roomId].incident).toBeNull();
+    expect(res.events.some((e) => e.type === 'incident-spread')).toBe(false);
+    const resolved = res.events.find((e) => e.type === 'incident-resolved');
+    expect(resolved && 'codos' in resolved ? resolved.codos : -1).toBe(0);
+  });
+
+  it('se pueden reparar al instante pagando Codos', () => {
+    const { data, roomId } = storageOnFire();
+    const cost = repairCost(data.runtime[roomId].incident!);
+    const fixed = unwrap(repairRoom(data, roomId));
+    expect(fixed.runtime[roomId].incident).toBeNull();
+    expect(fixed.resources.codos).toBe(data.resources.codos - cost);
+  });
+
+  it('una Oficina averiada no permite enviar misiones', () => {
+    const { data, roomId } = build(newGame(), 'overseer');
+    const incident = createIncident('gas', data.grid.rooms[roomId]);
+    const broken = { ...data, runtime: { ...data.runtime, [roomId]: { ...data.runtime[roomId], incident } } };
+    expect(maxActiveQuests(broken)).toBe(0);
   });
 });
 

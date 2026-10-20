@@ -325,12 +325,11 @@ export function simulate(data: GameData, dt: number): { data: GameData; events: 
     grid.seed,
     dt,
   );
-  let quest = data.quest;
-  if (quest) {
-    const res = updateQuest(quest, dwellers, dt);
-    quest = res.quest;
+  const quests = data.quests.map((q) => {
+    const res = updateQuest(q, dwellers, dt);
     outside.push(...res.events);
-  }
+    return res.quest;
+  });
 
   // 9. Inspector Fisgón.
   const insp = updateInspector(data.inspector, grid, data.time, dt);
@@ -344,7 +343,7 @@ export function simulate(data: GameData, dt: number): { data: GameData; events: 
       dwellers,
       raid,
       expeditions,
-      quest,
+      quests,
       inspector: insp.inspector,
       nextDwellerId,
       time: data.time + dt,

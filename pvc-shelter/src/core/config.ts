@@ -306,13 +306,14 @@ export const ROOM_DEFS: Record<RoomType, RoomDef> = {
   // --- Sprint 7 -------------------------------------------------------------
   overseer: room('overseer', {
     name: 'Oficina del Capataz',
-    description: 'Permite enviar escuadras de hasta 3 habitantes a misiones en el exterior.',
+    description: 'Envía escuadras de hasta 3 habitantes a misiones. A nivel 3 permite 2 misiones a la vez.',
     category: 'utility',
     unlockPopulation: 20,
     mergeable: false,
-    maxLevel: 1,
+    maxLevel: 3,
     baseCost: 800,
     costIncrement: 0,
+    upgradeCosts: { 2: 1500, 3: 4000 },
     energyDraw: 0.03,
     color: 0x2a3d4a,
     accent: 0x7ad1ff,
@@ -579,3 +580,16 @@ export const INSPECTOR_CHANCE = 0.2;
 export const INSPECTOR_VISIBLE_SECONDS = 12;
 export const INSPECTOR_REWARD_BASE = 50;
 export const INSPECTOR_REWARD_PER_DWELLER = 5;
+
+// ---------------------------------------------------------------------------
+// Ajustes: incidentes en salas sin puestos y misiones simultáneas
+// ---------------------------------------------------------------------------
+
+/** Probabilidad relativa de que un incidente aleatorio caiga en una sala sin puestos de trabajo. */
+export const PASSIVE_INCIDENT_WEIGHT = 0.3;
+/** Segundos en que se apaga sola una avería en una sala sin puestos (nadie puede combatirla). */
+export const PASSIVE_INCIDENT_BURNOUT_SECONDS = 60;
+/** Codos por punto de vida restante para reparar al instante una avería. */
+export const REPAIR_CODOS_PER_HP = 2;
+/** Misiones simultáneas: 1, o 2 con la Oficina del Capataz a nivel máximo. */
+export const QUESTS_AT_MAX_OVERSEER = 2;

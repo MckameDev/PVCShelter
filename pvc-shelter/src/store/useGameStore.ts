@@ -12,7 +12,9 @@ import { collectResource, RESOURCE_NAMES, rushRoom } from '../core/Production';
 import { advance } from '../core/Simulation';
 import type { SimEvent } from '../core/Simulation';
 import { INCIDENT_DEFS, RAID_DEFS, ROOM_DEFS } from '../core/config';
+import { repairRoom } from '../core/Incidents';
 import { catchInspector } from '../core/Inspector';
+
 import { lootSummary } from '../core/Loot';
 import { questById } from '../core/questCatalog';
 import { advanceQuest, collectQuest, pickLootSpot, questCrit, questHeal, startQuest } from '../core/Quests';
@@ -49,7 +51,8 @@ interface UiState {
   dwellerModalId: string | null;
   inventoryOpen: boolean;
   wastelandOpen: boolean;
-  questOpen: boolean;
+  /** Misión cuyo modal está abierto. */
+  openQuestId: string | null;
   /** Habitante a punto de salir al Yermo (diálogo de curativos abierto). */
   expeditionDraft: string | null;
 }
@@ -79,18 +82,20 @@ interface Actions {
   collectCrafted: (roomId: string) => boolean;
   restyle: (dwellerId: string, appearance: Appearance) => boolean;
   setWastelandOpen: (open: boolean) => void;
-  setQuestOpen: (open: boolean) => void;
+  openQuest: (questId: string | null) => void;
   setExpeditionDraft: (dwellerId: string | null) => void;
   sendExpedition: (dwellerId: string, stimpaks: number, radaways: number) => boolean;
   recallExplorer: (dwellerId: string) => boolean;
   collectExplorer: (dwellerId: string) => boolean;
   sendQuest: (questId: string, squad: string[]) => boolean;
-  advanceQuest: () => boolean;
-  pickQuestLoot: (spotId: string) => boolean;
+  advanceQuest: (id: string) => boolean;
+  pickQuestLoot: (id: string, spotId: string) => boolean;
   /** Dispara el crítico manual con la precisión del minijuego (0..1). */
-  fireCrit: (accuracy: number) => boolean;
-  healInQuest: (dwellerId: string) => boolean;
-  finishQuest: () => boolean;
+  fireCrit: (id: string, accuracy: number) => boolean;
+  healInQuest: (id: string, dwellerId: string) => boolean;
+  finishQuest: (id: string) => boolean;
+  /** Repara al instante una avería en una sala sin puestos de trabajo. */
+  repair: (roomId: string) => boolean;
   catchInspector: () => boolean;
   revive: (dwellerId: string) => boolean;
   expel: (dwellerId: string) => boolean;
@@ -117,7 +122,8 @@ const pickData = (s: GameState): GameData => ({
   inventory: s.inventory,
   raid: s.raid,
   expeditions: s.expeditions,
-  quest: s.quest,
+  quests: s.quests,
+  nextQuestSerial: s.nextQuestSerial,
   questsDone: s.questsDone,
   inspector: s.inspector,
   nextDwellerId: s.nextDwellerId,
@@ -133,7 +139,7 @@ const freshState = (seed: number): GameData & UiState => ({
   dwellerModalId: null,
   inventoryOpen: false,
   wastelandOpen: false,
-  questOpen: false,
+  openQuestId: null,
   expeditionDraft: null,
 });
 
@@ -414,7 +420,7 @@ export const useGameStore = create<GameState>()((set, get) => {
     },
 
     setWastelandOpen: (open) => set({ wastelandOpen: open }),
-    setQuestOpen: (open) => set({ questOpen: open }),
+    openQuest: (questId) => set({ openQuestId: questId }),
     setExpeditionDraft: (dwellerId) => set({ expeditionDraft: dwellerId }),
 
     sendExpedition: (dwellerId, stimpaks, radaways) => {
@@ -452,48 +458,53 @@ export const useGameStore = create<GameState>()((set, get) => {
       return true;
     },
 
-    advanceQuest: () => {
-      const res = advanceQuest(pickData(get()));
+    advanceQuest: (id) => {
+      const res = advanceQuest(pickData(get()), id);
       if (!res.ok) return fail(res.reason);
       set(res.value);
       return true;
     },
 
-    pickQuestLoot: (spotId) => {
-      const res = pickLootSpot(pickData(get()), spotId);
+    pickQuestLoot: (id, spotId) => {
+      const res = pickLootSpot(pickData(get()), id, spotId);
       if (!res.ok) return fail(res.reason);
       set(res.value);
       return true;
     },
 
-    fireCrit: (accuracy) => {
-      const res = questCrit(pickData(get()), accuracy);
+    fireCrit: (id, accuracy) => {
+      const res = questCrit(pickData(get()), id, accuracy);
       if (!res.ok) return fail(res.reason);
       set(res.value.data);
       return true;
     },
 
-    healInQuest: (dwellerId) => {
-      const res = questHeal(pickData(get()), dwellerId);
+    healInQuest: (id, dwellerId) => {
+      const res = questHeal(pickData(get()), id, dwellerId);
       if (!res.ok) return fail(res.reason);
       set(res.value);
       return true;
     },
 
-    finishQuest: () => {
-      const state = get();
-      const loot = state.quest?.loot;
-      const res = collectQuest(pickData(state));
+    finishQuest: (id) => {
+      const res = collectQuest(pickData(get()), id);
       if (!res.ok) return fail(res.reason);
-      const { data, scrapped, failed } = res.value;
+      const { data, scrapped, failed, loot } = res.value;
       const extra = scrapped > 0 ? ` (${scrapped} objetos desguazados por falta de sitio)` : '';
       set({
         ...data,
-        questOpen: false,
+        openQuestId: null,
         notice: failed
           ? notice('La escuadra volvió sin botín. Puedes revivir a los caídos desde su ficha.', 'info')
-          : notice(`Botín de la misión: ${loot ? lootSummary(loot) : 'nada'}${extra}.`, 'success'),
+          : notice(`Botín de la misión: ${lootSummary(loot)}${extra}.`, 'success'),
       });
+      return true;
+    },
+
+    repair: (roomId) => {
+      const res = repairRoom(pickData(get()), roomId);
+      if (!res.ok) return fail(res.reason);
+      set({ ...res.value, notice: notice('Avería reparada.', 'success') });
       return true;
     },
 

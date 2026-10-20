@@ -18,6 +18,7 @@ import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { canDemolish } from '../core/Bunker';
 import { canFight } from '../core/Combat';
+import { isPassiveRoom, repairCost } from '../core/Incidents';
 import { raidRoomId } from '../core/Raids';
 import {
   COURTSHIP_SECONDS,
@@ -25,6 +26,8 @@ import {
   ENTRANCE_GUARDS,
   INCIDENT_DEFS,
   INCIDENT_SPREAD_SECONDS,
+  PASSIVE_INCIDENT_BURNOUT_SECONDS,
+
   RAID_DEFS,
   ITEM_CAPACITY_PER_STORAGE_BLOCK,
   LEVEL_EFFICIENCY,
@@ -359,11 +362,29 @@ function DangerSection({ room }: { room: Room }) {
           <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-black/60">
             <div className="h-full bg-red-400" style={{ width: `${(incident.hp / incident.maxHp) * 100}%` }} />
           </div>
-          <p className="mt-1 text-xs text-red-200">
-            {defenders.length > 0
-              ? `${defenders.length} combatiendo. El daño recibido se reparte entre ellos.`
-              : `¡Sala vacía! Se propagará en ${Math.max(0, Math.ceil(INCIDENT_SPREAD_SECONDS - incident.spread))} s. Asigna habitantes.`}
-          </p>
+          {isPassiveRoom(room) ? (
+            <>
+              <p className="mt-1 text-xs text-red-200">
+                Avería: nadie puede entrar a combatirla. Se apagará sola en{' '}
+                {Math.ceil((incident.hp / incident.maxHp) * PASSIVE_INCIDENT_BURNOUT_SECONDS)} s; mientras tanto la sala no
+                funciona.
+              </p>
+              <button
+                type="button"
+                onClick={() => state.repair(room.id)}
+                disabled={state.resources.codos < repairCost(incident)}
+                className="mt-1.5 w-full rounded-md border-2 border-tape/70 py-1 text-xs font-bold hover:bg-tape/20 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Reparar ahora ({repairCost(incident)} Codos)
+              </button>
+            </>
+          ) : (
+            <p className="mt-1 text-xs text-red-200">
+              {defenders.length > 0
+                ? `${defenders.length} combatiendo. El daño recibido se reparte entre ellos.`
+                : `¡Sala vacía! Se propagará en ${Math.max(0, Math.ceil(INCIDENT_SPREAD_SECONDS - incident.spread))} s. Asigna habitantes.`}
+            </p>
+          )}
         </div>
       )}
       {raidHere && state.raid && (
