@@ -1,9 +1,10 @@
-import { Bandage, Crosshair, Sparkles, X } from 'lucide-react';
+import { Bandage, Crosshair, FastForward, Sparkles, X } from 'lucide-react';
 import { useState } from 'react';
 import { aliveEnemies, dwellerDps } from '../core/Combat';
 import { lootSummary } from '../core/Loot';
 import { questById } from '../core/questCatalog';
 import { squadMembers } from '../core/Quests';
+import { speedupCost } from '../core/Shop';
 import { useGameStore } from '../store/useGameStore';
 import { AimMinigame } from './AimMinigame';
 import { formatDuration } from './format';
@@ -82,6 +83,14 @@ function QuestView({ openId }: { openId: string }) {
             <div className="mt-1 h-2 overflow-hidden rounded-full bg-black/60">
               <div className="h-full bg-sky-400" style={{ width: `${(1 - quest.travelLeft / def.travelSeconds) * 100}%` }} />
             </div>
+            <button
+              type="button"
+              onClick={() => game.speedupQuest(quest.id)}
+              disabled={game.resources.cinta < speedupCost(quest.travelLeft)}
+              className="mt-2 flex w-full items-center justify-center gap-1 rounded-md border-2 border-bunker-600 py-1 text-xs font-bold hover:border-tape disabled:opacity-40"
+            >
+              <FastForward size={12} /> Llegar ya ({speedupCost(quest.travelLeft)} rollos de cinta)
+            </button>
           </div>
         )}
 

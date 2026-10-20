@@ -20,3 +20,22 @@ body,
   font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
   overscroll-behavior: none;
 }
+
+/* Revelado de cartas de las Cajas de Herramientas. */
+@keyframes pvc-card-in {
+  from {
+    opacity: 0;
+    transform: rotateY(90deg) scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: rotateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+  }
+}

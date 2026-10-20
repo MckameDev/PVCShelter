@@ -13,6 +13,11 @@ import { advance } from '../core/Simulation';
 import type { SimEvent } from '../core/Simulation';
 import { INCIDENT_DEFS, RAID_DEFS, ROOM_DEFS } from '../core/config';
 import { repairRoom } from '../core/Incidents';
+import { openBox } from '../core/Lunchbox';
+import type { Card } from '../core/Lunchbox';
+import type { OfflineSummary } from '../core/OfflineCalc';
+import { applySignals, claimObjective, discardObjective, signalsFromEvents } from '../core/Objectives';
+import { buyBox, claimSimulatedPack, speedupCraft, speedupExpedition, speedupQuest } from '../core/Shop';
 import { catchInspector } from '../core/Inspector';
 
 import { lootSummary } from '../core/Loot';
@@ -22,6 +27,7 @@ import { expelDweller, reviveDweller } from '../core/Revival';
 import { collectExpedition, recallExpedition, startExpedition } from '../core/Wasteland';
 import type {
   Appearance,
+  BoxKind,
   GameData,
   GridState,
   IncidentKind,
@@ -32,6 +38,7 @@ import type {
   Rng,
   RoomType,
 } from '../core/types';
+
 
 export type Selection = { kind: 'room'; id: string } | { kind: 'rock'; id: string } | null;
 
@@ -55,6 +62,12 @@ interface UiState {
   openQuestId: string | null;
   /** Habitante a punto de salir al Yermo (diálogo de curativos abierto). */
   expeditionDraft: string | null;
+  objectivesOpen: boolean;
+  shopOpen: boolean;
+  /** Cartas de la última caja abierta (modal de revelado). */
+  boxReveal: { kind: BoxKind; cards: Card[] } | null;
+  /** Resumen de lo que pasó mientras el jugador no estaba. */
+  offlineSummary: OfflineSummary | null;
 }
 
 interface Actions {
@@ -100,6 +113,20 @@ interface Actions {
   revive: (dwellerId: string) => boolean;
   expel: (dwellerId: string) => boolean;
   dismissNotice: () => void;
+  /** Sustituye la partida (al cargar de la nube o del navegador), con resumen offline opcional. */
+  loadGame: (data: GameData, offlineSummary?: OfflineSummary | null) => void;
+  dismissOffline: () => void;
+  setObjectivesOpen: (open: boolean) => void;
+  setShopOpen: (open: boolean) => void;
+  claimObjective: (id: string) => boolean;
+  discardObjective: (id: string) => boolean;
+  openBox: (kind: BoxKind) => boolean;
+  closeBoxReveal: () => void;
+  buyBox: (kind: BoxKind) => boolean;
+  claimCintaPack: (packId: string) => boolean;
+  speedupQuest: (id: string) => boolean;
+  speedupExpedition: (dwellerId: string) => boolean;
+  speedupCraft: (roomId: string) => boolean;
 }
 
 // GameData se guarda "aplanado" en el store para que los componentes se
@@ -114,7 +141,8 @@ const notice = (text: string, tone: Notice['tone']): Notice => ({ id: ++noticeSe
 
 const randomSeed = () => Math.floor(Math.random() * 2 ** 31);
 
-const pickData = (s: GameState): GameData => ({
+/** Extrae del store solo el estado de partida (lo que se guarda). */
+export const selectGameData = (s: GameState): GameData => ({
   grid: s.grid,
   resources: s.resources,
   dwellers: s.dwellers,
@@ -126,12 +154,14 @@ const pickData = (s: GameState): GameData => ({
   nextQuestSerial: s.nextQuestSerial,
   questsDone: s.questsDone,
   inspector: s.inspector,
+  objectives: s.objectives,
+  boxes: s.boxes,
   nextDwellerId: s.nextDwellerId,
   time: s.time,
 });
+const pickData = selectGameData;
 
-const freshState = (seed: number): GameData & UiState => ({
-  ...Bunker.createNewGame(seed),
+const uiDefaults = (): UiState => ({
   buildType: null,
   selection: null,
   notice: null,
@@ -141,7 +171,13 @@ const freshState = (seed: number): GameData & UiState => ({
   wastelandOpen: false,
   openQuestId: null,
   expeditionDraft: null,
+  objectivesOpen: false,
+  shopOpen: false,
+  boxReveal: null,
+  offlineSummary: null,
 });
+
+const freshState = (seed: number): GameData & UiState => ({ ...Bunker.createNewGame(seed), ...uiDefaults() });
 
 const incidentLabel = (kind: IncidentKind) => INCIDENT_DEFS[kind].label;
 const roomName = (grid: GridState, roomId: string) => {
@@ -255,8 +291,9 @@ export const useGameStore = create<GameState>()((set, get) => {
     newGame: (seed = randomSeed()) => set(freshState(seed)),
 
     tick: (seconds) => {
-      const { data, events } = advance(pickData(get()), seconds);
-      const n = eventNotice(events, data.grid);
+      const res = advance(pickData(get()), seconds);
+      const data = applySignals(res.data, signalsFromEvents(res.events));
+      const n = eventNotice(res.events, data.grid);
       set(n ? { ...data, notice: n } : data);
     },
 
@@ -281,7 +318,7 @@ export const useGameStore = create<GameState>()((set, get) => {
       const res = Grid.placeRoom(state.grid, buildType, floor, col);
       if (!res.ok) return fail(res.reason);
       set({
-        ...spend(Bunker.applyRoomChange(pickData(state), res.value), cost),
+        ...applySignals(spend(Bunker.applyRoomChange(pickData(state), res.value), cost), [{ kind: 'build', amount: 1 }]),
         buildType: null,
         selection: { kind: 'room', id: res.value.roomId },
       });
@@ -347,7 +384,8 @@ export const useGameStore = create<GameState>()((set, get) => {
     collect: (resource) => {
       const res = collectResource(pickData(get()), resource, rng);
       if (!res.ok) return fail(res.reason);
-      const { data, summary } = res.value;
+      const { summary } = res.value;
+      const data = applySignals(res.value.data, [{ kind: 'collect', amount: summary.stored, resource: summary.resource }]);
       const parts = [`+${summary.stored} ${RESOURCE_NAMES[resource]}`];
       if (summary.codos > 0) parts.push(`+${summary.codos} Codos`);
       set({ ...data, notice: notice(parts.join(' · '), 'success') });
@@ -357,7 +395,8 @@ export const useGameStore = create<GameState>()((set, get) => {
     rush: (roomId) => {
       const res = rushRoom(pickData(get()), roomId, rng);
       if (!res.ok) return fail(res.reason);
-      const { data, outcome } = res.value;
+      const { outcome } = res.value;
+      const data = outcome.success ? applySignals(res.value.data, [{ kind: 'rush', amount: 1 }]) : res.value.data;
       const text = outcome.success
         ? `¡Exprés exitoso! +${outcome.stored} ${RESOURCE_NAMES[outcome.resource]} · +${outcome.codos} Codos`
         : `¡El Exprés falló! Se desató ${incidentLabel(outcome.incident)}.`;
@@ -415,7 +454,10 @@ export const useGameStore = create<GameState>()((set, get) => {
     collectCrafted: (roomId) => {
       const res = collectCraft(pickData(get()), roomId);
       if (!res.ok) return fail(res.reason);
-      set({ ...res.value.data, notice: notice(`¡${ITEMS[res.value.item.defId].name} terminado! Está en el inventario.`, 'success') });
+      set({
+        ...applySignals(res.value.data, [{ kind: 'craft', amount: 1 }]),
+        notice: notice(`¡${ITEMS[res.value.item.defId].name} terminado! Está en el inventario.`, 'success'),
+      });
       return true;
     },
 
@@ -489,7 +531,8 @@ export const useGameStore = create<GameState>()((set, get) => {
     finishQuest: (id) => {
       const res = collectQuest(pickData(get()), id);
       if (!res.ok) return fail(res.reason);
-      const { data, scrapped, failed, loot } = res.value;
+      const { scrapped, failed, loot } = res.value;
+      const data = failed ? res.value.data : applySignals(res.value.data, [{ kind: 'quest', amount: 1 }]);
       const extra = scrapped > 0 ? ` (${scrapped} objetos desguazados por falta de sitio)` : '';
       set({
         ...data,
@@ -511,7 +554,10 @@ export const useGameStore = create<GameState>()((set, get) => {
     catchInspector: () => {
       const res = catchInspector(pickData(get()));
       if (!res.ok) return fail(res.reason);
-      set({ ...res.value.data, notice: notice(`¡Pillaste al Inspector Fisgón! +${res.value.reward} Codos.`, 'success') });
+      set({
+        ...applySignals(res.value.data, [{ kind: 'inspector', amount: 1 }]),
+        notice: notice(`¡Pillaste al Inspector Fisgón! +${res.value.reward} Codos.`, 'success'),
+      });
       return true;
     },
 
@@ -543,5 +589,77 @@ export const useGameStore = create<GameState>()((set, get) => {
 
 
     dismissNotice: () => set({ notice: null }),
+
+    loadGame: (data, offlineSummary = null) => set({ ...data, ...uiDefaults(), offlineSummary }),
+    dismissOffline: () => set({ offlineSummary: null }),
+    setObjectivesOpen: (open) => set({ objectivesOpen: open }),
+    setShopOpen: (open) => set({ shopOpen: open }),
+
+    claimObjective: (id) => {
+      const res = claimObjective(pickData(get()), id);
+      if (!res.ok) return fail(res.reason);
+      const reward = res.value.objective.reward;
+      const text =
+        'codos' in reward
+          ? `+${reward.codos} Codos`
+          : 'cinta' in reward
+            ? `+${reward.cinta} Rollos de Cinta`
+            : `+1 Caja de Herramientas${reward.box === 'rare' ? ' rara' : ''}`;
+      set({ ...res.value.data, notice: notice(`¡Objetivo cumplido! ${text}.`, 'success') });
+      return true;
+    },
+
+    discardObjective: (id) => {
+      const now = new Date();
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const res = discardObjective(pickData(get()), id, today);
+      if (!res.ok) return fail(res.reason);
+      set({ ...res.value, notice: notice('Objetivo descartado. Mañana podrás descartar otro.', 'info') });
+      return true;
+    },
+
+    openBox: (kind) => {
+      const res = openBox(pickData(get()), kind, rng);
+      if (!res.ok) return fail(res.reason);
+      set({ ...res.value.data, boxReveal: { kind, cards: res.value.cards } });
+      return true;
+    },
+
+    closeBoxReveal: () => set({ boxReveal: null }),
+
+    buyBox: (kind) => {
+      const res = buyBox(pickData(get()), kind);
+      if (!res.ok) return fail(res.reason);
+      set({ ...res.value, notice: notice(`Compraste una Caja de Herramientas${kind === 'rare' ? ' rara' : ''}.`, 'success') });
+      return true;
+    },
+
+    claimCintaPack: (packId) => {
+      const res = claimSimulatedPack(pickData(get()), packId);
+      if (!res.ok) return fail(res.reason);
+      set({ ...res.value.data, notice: notice(`+${res.value.cinta} Rollos de Cinta (compra simulada).`, 'success') });
+      return true;
+    },
+
+    speedupQuest: (id) => {
+      const res = speedupQuest(pickData(get()), id);
+      if (!res.ok) return fail(res.reason);
+      set(res.value);
+      return true;
+    },
+
+    speedupExpedition: (dwellerId) => {
+      const res = speedupExpedition(pickData(get()), dwellerId);
+      if (!res.ok) return fail(res.reason);
+      set(res.value);
+      return true;
+    },
+
+    speedupCraft: (roomId) => {
+      const res = speedupCraft(pickData(get()), roomId);
+      if (!res.ok) return fail(res.reason);
+      set(res.value);
+      return true;
+    },
   };
 });

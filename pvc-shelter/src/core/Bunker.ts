@@ -1,6 +1,7 @@
-import { ROOM_DEFS, STARTING_DWELLERS, STARTING_RESOURCES } from './config';
+import { ROOM_DEFS, STARTING_BOXES, STARTING_DWELLERS, STARTING_RESOURCES } from './config';
 import { dwellersInRoom, generateDwellers, livingCount } from './Dwellers';
 import { createStartingInventory } from './Inventory';
+import { createObjectives } from './Objectives';
 import * as Grid from './GridManager';
 import { emptyRuntime, getRuntime } from './Production';
 import { createRng } from './random';
@@ -28,6 +29,8 @@ export function createNewGame(seed: number): GameData {
     nextQuestSerial: 1,
     questsDone: [],
     inspector: null,
+    objectives: createObjectives(seed),
+    boxes: { ...STARTING_BOXES },
     nextDwellerId: nextId,
     time: 0,
   };

@@ -1,0 +1,4 @@
+# Defensa en profundidad: si por error la raíz web apunta a backend/ en vez de
+# backend/public/, se bloquea todo (.env, src/, database/, logs...).
+# public/.htaccess vuelve a permitir solo esa carpeta.
+Require all denied

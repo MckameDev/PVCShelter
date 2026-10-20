@@ -593,3 +593,32 @@ export const PASSIVE_INCIDENT_BURNOUT_SECONDS = 60;
 export const REPAIR_CODOS_PER_HP = 2;
 /** Misiones simultáneas: 1, o 2 con la Oficina del Capataz a nivel máximo. */
 export const QUESTS_AT_MAX_OVERSEER = 2;
+
+// ---------------------------------------------------------------------------
+// Sprint 8: metajuego, tienda simulada y progreso offline
+// ---------------------------------------------------------------------------
+
+export const ACTIVE_OBJECTIVES = 3;
+export const STARTING_BOXES = { common: 1, rare: 0 };
+
+/** Precio en Rollos de Cinta de cada Caja de Herramientas. */
+export const BOX_PRICES = { common: 8, rare: 25 } as const;
+
+/** Paquetes de la tienda SIMULADA: no se cobra dinero real, solo se añaden rollos. */
+export const CINTA_PACKS = [
+  { id: 'small', cinta: 10, name: 'Puñado de cinta' },
+  { id: 'medium', cinta: 50, name: 'Caja de rollos' },
+  { id: 'large', cinta: 120, name: 'Palé de cinta americana' },
+] as const;
+
+/** Acelerar con cinta: 1 rollo por cada minuto (o fracción) que falte. */
+export const SPEEDUP_SECONDS_PER_CINTA = 60;
+
+/** Progreso offline: como mucho se simulan estos segundos (no destruir el búnker en días de ausencia). */
+export const OFFLINE_MAX_SECONDS = 120 * 60;
+/** Ausencias más cortas no se simulan aparte (la partida ya estaba al día). */
+export const OFFLINE_MIN_SECONDS = 30;
+/** Paso de simulación offline (más grueso que el normal para que sea rápido). */
+export const OFFLINE_STEP_SECONDS = 1;
+/** Offline nadie muere en el búnker: hambre, sed e incidentes dejan como mínimo esta fracción de vida. */
+export const OFFLINE_HP_FLOOR = 0.1;

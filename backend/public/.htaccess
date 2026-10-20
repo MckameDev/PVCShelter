@@ -1,0 +1,10 @@
+# Apache: todo lo que no sea un archivo existente pasa por index.php
+# (la API en /api/* y el juego compilado como SPA).
+Options -Indexes
+Require all granted
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteRule ^ index.php [QSA,L]
+</IfModule>

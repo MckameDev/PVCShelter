@@ -1,6 +1,7 @@
-import { Bandage, FlaskConical, Skull, X } from 'lucide-react';
+import { Bandage, FastForward, FlaskConical, Skull, X } from 'lucide-react';
 import { lootSummary } from '../core/Loot';
 import { canRevive, reviveCost } from '../core/Revival';
+import { speedupCost } from '../core/Shop';
 import type { Expedition } from '../core/types';
 import { useGameStore } from '../store/useGameStore';
 import { formatDuration } from './format';
@@ -55,6 +56,16 @@ function ExpeditionCard({ exp }: { exp: Expedition }) {
             className="flex-1 rounded-md border-2 border-tape/70 py-1 text-xs font-bold hover:bg-tape/20"
           >
             Regresar (tarda {formatDuration(exp.elapsed / 2)})
+          </button>
+        )}
+        {exp.status === 'returning' && (
+          <button
+            type="button"
+            onClick={() => game.speedupExpedition(d.id)}
+            disabled={game.resources.cinta < speedupCost(exp.returnLeft)}
+            className="flex flex-1 items-center justify-center gap-1 rounded-md border-2 border-bunker-600 py-1 text-xs font-bold hover:border-tape disabled:opacity-40"
+          >
+            <FastForward size={12} /> Llegar ya ({speedupCost(exp.returnLeft)} rollos)
           </button>
         )}
         {exp.status === 'back' && (

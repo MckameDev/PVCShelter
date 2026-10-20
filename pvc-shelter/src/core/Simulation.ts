@@ -1,5 +1,7 @@
 import {
   DEATH_HAPPINESS_PENALTY,
+  OFFLINE_HP_FLOOR,
+
   ENERGY_RESERVE_SECONDS,
   FOOD_PER_DWELLER,
   HP_REGEN,
@@ -37,7 +39,9 @@ import { maybeStartRaid, raidRoomId, updateRaid } from './Raids';
 import type { RaidEvent } from './Raids';
 import { updateExpeditions } from './Wasteland';
 import type { WastelandEvent } from './Wasteland';
-import { cycleTime, getRuntime } from './Production';
+import { storageCap } from './Economy';
+import { cycleTime, cycleYield, getRuntime } from './Production';
+
 import { createRng, hashString } from './random';
 import type { Dweller, GameData, GridState, Room, RoomRuntime } from './types';
 
@@ -135,7 +139,16 @@ function consume(stock: number, need: number): { stock: number; shortage: number
   return { stock: 0, shortage: 1 - stock / need };
 }
 
-export function simulate(data: GameData, dt: number): { data: GameData; events: SimEvent[] } {
+export interface SimOptions {
+  /**
+   * Progreso offline: no aparecen incidentes, asaltos ni Inspector nuevos (no
+   * se castiga al jugador por no estar), y la producción se recolecta sola
+   * para que las salas no se queden paradas tras un ciclo.
+   */
+  offline?: boolean;
+}
+
+export function simulate(data: GameData, dt: number, opts: SimOptions = {}): { data: GameData; events: SimEvent[] } {
   const events: SimEvent[] = [];
   const life: LifeEvent[] = [];
   const { grid } = data;
@@ -203,10 +216,10 @@ export function simulate(data: GameData, dt: number): { data: GameData; events: 
     time: data.time,
   };
   updateIncidents(ctx, dt);
-  maybeStartRandomIncident(ctx, alive.length, dt);
+  if (!opts.offline) maybeStartRandomIncident(ctx, alive.length, dt);
   const raidEvents: RaidEvent[] = [];
   const raidCtx = { ...ctx, events: raidEvents };
-  const raid = data.raid ? updateRaid(data.raid, raidCtx, dt) : maybeStartRaid(raidCtx, alive.length, dt);
+  const raid = data.raid ? updateRaid(data.raid, raidCtx, dt) : opts.offline ? null : maybeStartRaid(raidCtx, alive.length, dt);
   events.push(...conflict, ...raidEvents);
   const dangerRoom = raidRoomId(raid);
 
@@ -221,6 +234,12 @@ export function simulate(data: GameData, dt: number): { data: GameData; events: 
     else if (water.shortage === 0) dw.hp += HP_REGEN * dt;
     dw.hp -= damage.get(d.id) ?? 0;
     dw.hp = Math.min(dw.maxHp - dw.intox, dw.hp);
+    if (opts.offline) {
+      // Fuera de línea nadie muere en el búnker: la salud baja como mucho hasta un mínimo.
+      const floor = OFFLINE_HP_FLOOR * dw.maxHp;
+      dw.intox = Math.min(dw.intox, dw.maxHp - floor);
+      dw.hp = Math.max(dw.hp, Math.min(floor, dw.maxHp - dw.intox));
+    }
 
     if (dw.hp <= 0) {
       // La muerte entristece a los compañeros de sala.
@@ -246,7 +265,14 @@ export function simulate(data: GameData, dt: number): { data: GameData; events: 
     const t = cycleTime(room, workers, happiness);
     if (t === null) continue;
     const progress = rt.progress + dt;
-    runtime[room.id] = progress >= t ? { ...rt, progress: t, ready: true } : { ...rt, progress };
+    if (progress >= t && opts.offline) {
+      // Recolección automática offline (sin tirada de Codos: el bono es por jugar activo).
+      const resource = ROOM_DEFS[room.type].produces!;
+      resources[resource] = Math.min(storageCap(grid, resource), resources[resource] + cycleYield(room));
+      runtime[room.id] = { ...rt, progress: 0 };
+    } else {
+      runtime[room.id] = progress >= t ? { ...rt, progress: t, ready: true } : { ...rt, progress };
+    }
     for (const w of workers) dwellers[w.id].xp += effectiveStat(w, stat) * XP_PER_STAT_SECOND * dt * (1 + petBonus(w, 'xp'));
   }
 
@@ -326,13 +352,16 @@ export function simulate(data: GameData, dt: number): { data: GameData; events: 
     dt,
   );
   const quests = data.quests.map((q) => {
+    // Fuera de línea el combate de las misiones espera al jugador (críticos manuales);
+    // los viajes de ida y vuelta sí avanzan.
+    if (opts.offline && q.status === 'exploring') return q;
     const res = updateQuest(q, dwellers, dt);
     outside.push(...res.events);
     return res.quest;
   });
 
   // 9. Inspector Fisgón.
-  const insp = updateInspector(data.inspector, grid, data.time, dt);
+  const insp = opts.offline && !data.inspector ? { inspector: null, events: [] } : updateInspector(data.inspector, grid, data.time, dt);
   outside.push(...insp.events);
 
   return {
@@ -353,15 +382,20 @@ export function simulate(data: GameData, dt: number): { data: GameData; events: 
 }
 
 /** Avanza `seconds` en pasos fijos de SIM_STEP. Devuelve el resto no simulado. */
-export function advance(data: GameData, seconds: number): { data: GameData; events: SimEvent[]; remainder: number } {
+export function advance(
+  data: GameData,
+  seconds: number,
+  opts: SimOptions & { step?: number } = {},
+): { data: GameData; events: SimEvent[]; remainder: number } {
+  const step = opts.step ?? SIM_STEP;
   let current = data;
   const events: SimEvent[] = [];
   let left = seconds;
-  while (left >= SIM_STEP) {
-    const res = simulate(current, SIM_STEP);
+  while (left >= step) {
+    const res = simulate(current, step, opts);
     current = res.data;
     events.push(...res.events);
-    left -= SIM_STEP;
+    left -= step;
   }
   return { data: current, events, remainder: left };
 }

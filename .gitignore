@@ -1,0 +1,14 @@
+# Secretos: nunca se suben al repositorio (usa los .env.example como plantilla).
+.env
+.env.*
+!.env.example
+backend/.env
+
+# Logs locales del backend
+backend/storage/logs/*
+!backend/storage/logs/.gitkeep
+
+# Juego compilado dentro del backend (npm run build:backend): se genera, no se versiona.
+backend/public/index.html
+backend/public/assets/
+backend/public/favicon.svg

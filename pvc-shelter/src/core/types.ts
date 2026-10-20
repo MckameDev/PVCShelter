@@ -233,6 +233,10 @@ export interface GameData {
   questsDone: string[];
   /** Inspector Fisgón escondido en alguna sala, si lo hay. */
   inspector: Inspector | null;
+  /** Objetivos diarios (3 activos a la vez). */
+  objectives: ObjectivesState;
+  /** Cajas de Herramientas sin abrir. */
+  boxes: Record<BoxKind, number>;
 
   nextDwellerId: number;
 
@@ -322,6 +326,49 @@ export interface Inspector {
   /** Posición horizontal dentro del búnker, en celdas. */
   x: number;
   timeLeft: number;
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 8: objetivos diarios y Cajas de Herramientas
+// ---------------------------------------------------------------------------
+
+/** Cajas de Herramientas: las raras traen siempre una mascota (única fuente de mascotas). */
+export type BoxKind = 'common' | 'rare';
+
+export type ObjectiveKind =
+  | 'collect'
+  | 'incident'
+  | 'raid'
+  | 'level-up'
+  | 'build'
+  | 'explorer'
+  | 'craft'
+  | 'rush'
+  | 'train'
+  | 'birth'
+  | 'inspector'
+  | 'quest';
+
+export type ObjectiveReward = { codos: number } | { cinta: number } | { box: BoxKind };
+
+export interface Objective {
+  id: string;
+  templateId: string;
+  kind: ObjectiveKind;
+  /** Solo para 'collect': qué recurso cuenta. */
+  resource?: VitalResource;
+  text: string;
+  target: number;
+  progress: number;
+  reward: ObjectiveReward;
+}
+
+export interface ObjectivesState {
+  active: Objective[];
+  /** Contador para generar objetivos nuevos de forma reproducible. */
+  serial: number;
+  /** Fecha (AAAA-MM-DD, hora local del jugador) del último descarte: 1 por día. */
+  lastDiscardDate: string | null;
 }
 
 export type Rng = () => number;

@@ -10,7 +10,10 @@ npm run dev        # servidor de desarrollo
 npm test           # tests de la lógica pura (Vitest)
 npm run build      # typecheck + build de producción
 npm run lint       # oxlint
+npm run build:backend  # compila el juego dentro de ../backend/public (despliegue)
 ```
+
+Cuentas y guardado en la nube: API PHP + MySQL en [`../backend`](../backend/README.md). En desarrollo, Vite redirige `/api` a `http://127.0.0.1:8000` (cámbialo con `VITE_API_TARGET`). Sin backend se puede jugar como invitado (guardado en el navegador).
 
 ## Arquitectura
 
@@ -39,12 +42,19 @@ src/
 │   ├── questCatalog.ts  Catálogo de misiones (edificios, salas, enemigos y botín)
 │   ├── Quests.ts        Misiones: viaje, niebla de guerra, combate, críticos manuales
 │   ├── Inspector.ts     Inspector Fisgón (evento aleatorio interno)
+│   ├── objectiveCatalog.ts / Objectives.ts  Objetivos diarios (3 activos, descartar 1 al día)
+│   ├── Lunchbox.ts      Cajas de Herramientas (las raras traen siempre mascota)
+│   ├── Shop.ts          Tienda simulada de cinta, compra de cajas y aceleradores
+│   ├── OfflineCalc.ts   Progreso offline al volver (con tope y sin muertes ni ataques)
+│   ├── SaveFormat.ts    Formato de guardado versionado, validación y migración
 │   ├── Pathfinding.ts   Rutas entre salas (Dijkstra; ascensores como aristas verticales)
 │   ├── Production.ts    Ciclos de producción, recolección y Modo Exprés
 │   ├── Simulation.ts    Tick determinista: energía por distancia, consumo, salud, incidentes
 │   ├── GameLoop.ts      Reloj maestro (tiempo real → pasos fijos de simulación)
 │   └── random.ts        PRNG con semilla (rocas y habitantes reproducibles)
-├── store/     Estado central (Zustand). Orquesta core/ y valida recursos.
+├── store/     Estado central (Zustand). useGameStore orquesta core/; useSessionStore
+│              gestiona cuenta/invitado, carga con progreso offline y autoguardado.
+├── services/  api.ts (cliente de la API con CSRF) y localSave.ts (modo invitado).
 ├── canvas/    Motor gráfico (PixiJS). Dibuja el estado y traduce la entrada en acciones.
 │   ├── BunkerStage.ts   Cámara (paneo, zoom con rueda y pinch) e input
 │   ├── RoomSprite.ts    Dibujo procedural de salas y rocas
@@ -82,5 +92,7 @@ En desarrollo (`npm run dev`) el store está disponible en la consola como `wind
 - **Yermo**: arrastra un habitante a la superficie (o “Enviar al Yermo” en su ficha) y elige curativos. El botón de brújula abre el registro; “Regresar” tarda la mitad de lo explorado.
 - **Misiones**: con una Oficina del Capataz, elige misión y escuadra (hasta 3) en su panel. En la misión: despeja cada sala, recoge el botín brillante y usa el crítico con el minijuego de puntería.
 - **Inspector Fisgón**: a veces aparece escondido en una sala; tócalo antes de que se vaya para ganar Codos.
+- **Metajuego**: botón de diana = objetivos diarios; botón de regalo = Cajas de Herramientas y tienda (simulada: no hay pagos reales). Los Rollos de Cinta aceleran viajes, vueltas del Yermo y fabricación.
+- **Guardado**: automático cada 30 s y al ocultar la pestaña; el icono de nube muestra el estado (púlsalo para guardar ya). Si otra pestaña guardó después, el autoguardado se pausa para no pisarla.
 - **Reproducción**: un hombre y una mujer adultos sin parentesco en una Sala de Descanso se cortejan; luego vienen embarazo, nacimiento y niñez (los niños comen pero no trabajan).
 - **Producción**: tocar el icono flotante recolecta todas las salas listas de ese recurso. **Exprés** produce al instante con un % de fallo; si falla, provoca un incidente.

@@ -1,7 +1,8 @@
-import { Hammer, PackageCheck } from 'lucide-react';
+import { FastForward, Hammer, PackageCheck } from 'lucide-react';
 import { canStartCraft, craftCost, craftTime, workshopRecipes, WORKSHOP_KIND } from '../core/Crafting';
 import { dwellersInRoom } from '../core/Dwellers';
 import { ITEMS, itemSummary } from '../core/items';
+import { craftWait, speedupCost } from '../core/Shop';
 import type { Room } from '../core/types';
 import { useGameStore } from '../store/useGameStore';
 import { junkText, RARITY_CLASS } from './itemFormat';
@@ -18,6 +19,7 @@ export function CraftingSection({ room }: { room: Room }) {
   if (craft) {
     const def = ITEMS[craft.defId];
     const total = craftTime(room, craft.defId, workers);
+    const wait = craftWait(state, room.id);
     return (
       <div className="mb-3 rounded-lg bg-black/30 p-2 text-sm">
         {runtime.ready ? (
@@ -41,6 +43,16 @@ export function CraftingSection({ room }: { room: Room }) {
             <div className="mt-1 h-2 overflow-hidden rounded-full bg-black/60">
               <div className="h-full bg-tape" style={{ width: `${total ? Math.min(100, (craft.progress / total) * 100) : 0}%` }} />
             </div>
+            {wait !== null && (
+              <button
+                type="button"
+                onClick={() => state.speedupCraft(room.id)}
+                disabled={state.resources.cinta < speedupCost(wait)}
+                className="mt-2 flex w-full items-center justify-center gap-1 rounded-md border-2 border-bunker-600 py-1 text-xs font-bold hover:border-tape disabled:opacity-40"
+              >
+                <FastForward size={12} /> Terminar ya ({speedupCost(wait)} rollos de cinta)
+              </button>
+            )}
           </>
         )}
       </div>

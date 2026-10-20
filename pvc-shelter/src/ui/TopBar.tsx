@@ -1,4 +1,4 @@
-import { Backpack, Bandage, Compass, Disc3, Droplets, FlaskConical, Smile, Users, Utensils, Wrench, Zap } from 'lucide-react';
+import { Backpack, Bandage, Compass, Disc3, Gift, Target, Droplets, FlaskConical, Smile, Users, Utensils, Wrench, Zap } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useMemo } from 'react';
 import { globalHappiness, populationCap } from '../core/Dwellers';
@@ -9,6 +9,8 @@ import type { VitalResource } from '../core/types';
 import { useGameStore } from '../store/useGameStore';
 import { hexColor } from './roomIcons';
 import { RESOURCE_COLORS } from '../canvas/StatusSprite';
+import { isComplete } from '../core/Objectives';
+import { SessionStatus } from './SessionStatus';
 
 const RESOURCE_ICONS: Record<VitalResource, LucideIcon> = { energy: Zap, food: Utensils, water: Droplets };
 
@@ -49,6 +51,10 @@ export function TopBar() {
   const itemCount = useGameStore((s) => Object.keys(s.inventory.items).length);
   const setInventoryOpen = useGameStore((s) => s.setInventoryOpen);
   const setWastelandOpen = useGameStore((s) => s.setWastelandOpen);
+  const setObjectivesOpen = useGameStore((s) => s.setObjectivesOpen);
+  const setShopOpen = useGameStore((s) => s.setShopOpen);
+  const claimable = useGameStore((s) => s.objectives.active.filter(isComplete).length);
+  const boxCount = useGameStore((s) => s.boxes.common + s.boxes.rare);
   const explorers = useGameStore((s) => Object.keys(s.expeditions).length);
   const explorersBack = useGameStore((s) => Object.values(s.expeditions).some((e) => e.status === 'back' || e.status === 'dead'));
 
@@ -102,6 +108,26 @@ export function TopBar() {
         <Compass size={18} />
         <span className="font-bold tabular-nums">{explorers}</span>
       </button>
+      <button
+        type="button"
+        onClick={() => setObjectivesOpen(true)}
+        className={`relative flex items-center gap-1.5 rounded-lg px-3 py-2 hover:bg-bunker-600 ${claimable > 0 ? 'bg-emerald-800/70' : 'bg-bunker-900/70'}`}
+        title="Objetivos diarios"
+        aria-label={`Objetivos${claimable > 0 ? `: ${claimable} para reclamar` : ''}`}
+      >
+        <Target size={18} />
+        {claimable > 0 && <span className="font-bold tabular-nums">{claimable}</span>}
+      </button>
+      <button
+        type="button"
+        onClick={() => setShopOpen(true)}
+        className={`flex items-center gap-1.5 rounded-lg px-3 py-2 hover:bg-bunker-600 ${boxCount > 0 ? 'bg-sky-900/70' : 'bg-bunker-900/70'}`}
+        title="Cajas de Herramientas y tienda"
+        aria-label={`Cajas y tienda${boxCount > 0 ? `: ${boxCount} cajas sin abrir` : ''}`}
+      >
+        <Gift size={18} />
+        {boxCount > 0 && <span className="font-bold tabular-nums">{boxCount}</span>}
+      </button>
       <div className="ml-auto flex items-center gap-2">
         <button
           type="button"
@@ -133,6 +159,7 @@ export function TopBar() {
           <Disc3 size={16} />
           <span className="font-bold tabular-nums">{cinta}</span>
         </div>
+        <SessionStatus />
       </div>
     </header>
   );
