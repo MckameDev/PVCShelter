@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+@theme {
+  --color-pvc: #e9ecef;
+  --color-tape: #f2c94c;
+  --color-bunker-900: #0d0907;
+  --color-bunker-800: #1b1410;
+  --color-bunker-700: #2b1f17;
+  --color-bunker-600: #3d2d21;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--color-bunker-900);
+  color: var(--color-pvc);
+  font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+  overscroll-behavior: none;
+}
