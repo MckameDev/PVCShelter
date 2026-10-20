@@ -12,3 +12,6 @@ backend/storage/logs/*
 backend/public/index.html
 backend/public/assets/
 backend/public/favicon.svg
+
+# Paquete de despliegue generado localmente (contiene el juego compilado).
+deploy/
