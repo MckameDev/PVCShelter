@@ -4,7 +4,8 @@ import { roomCapacity } from '../core/Economy';
 import { findRoomAt, getConnectedRoomIds, roomWidth } from '../core/GridManager';
 import { findPath } from '../core/Pathfinding';
 import type { Waypoint } from '../core/Pathfinding';
-import type { Dweller, GameData, GridState, Room } from '../core/types';
+import { ITEMS } from '../core/items';
+import type { Appearance, Dweller, GameData, GridState, HairStyle, Room } from '../core/types';
 import { CELL_W, FLOOR_H } from './layout';
 
 // Representación visual de los habitantes. El movimiento es solo presentación:
@@ -17,8 +18,11 @@ const ELEVATOR_SPEED = 1.6; // pisos por segundo
 const FEET_Y = FLOOR_H - 16;
 const BODY_H = 36;
 
-const SKIN = [0xf1c27d, 0xe0ac69, 0xc68642, 0x8d5524, 0xffdbac];
-const HAIR = [0x2b1b0e, 0x5a3825, 0xb5651d, 0xe6c35c, 0x1a1a1a, 0x8c8c8c];
+/** Paletas de apariencia (también las usa la Peluquería en la ficha del habitante). */
+export const SKIN_TONES = [0xf1c27d, 0xe0ac69, 0xc68642, 0x8d5524, 0xffdbac];
+export const HAIR_COLORS = [0x2b1b0e, 0x5a3825, 0xb5651d, 0xe6c35c, 0x1a1a1a, 0x8c8c8c, 0xd94a4a, 0x4a8ad9];
+export const HAIR_STYLES: HairStyle[] = ['short', 'long', 'mohawk', 'bald'];
+const DEFAULT_SUIT = 0x3f6f9f;
 
 interface Point {
   x: number;
@@ -46,25 +50,57 @@ function hashOf(id: string): number {
   return h >>> 0;
 }
 
-function drawDweller(g: Graphics, d: Dweller): void {
+/** Apariencia efectiva: la elegida en la Peluquería o una estable derivada del id. */
+export function resolveAppearance(d: Dweller): Appearance {
+  if (d.appearance) return d.appearance;
   const h = hashOf(d.id);
-  const skin = SKIN[h % SKIN.length];
-  const hair = HAIR[(h >>> 8) % HAIR.length];
+  return { skin: h % SKIN_TONES.length, hair: (h >>> 8) % 6, style: d.sex === 'F' ? 'long' : 'short' };
+}
+
+function drawDweller(g: Graphics, d: Dweller): void {
+  const look = resolveAppearance(d);
+  const skin = SKIN_TONES[look.skin % SKIN_TONES.length];
+  const hair = HAIR_COLORS[look.hair % HAIR_COLORS.length];
+  const outfit = d.equipment.outfit ? ITEMS[d.equipment.outfit.defId] : undefined;
+  const suit = outfit?.color ?? DEFAULT_SUIT;
   g.clear();
+  // Mascota a los pies
+  if (d.equipment.pet) g.ellipse(-13, -4, 5, 4).fill(0x8a6a3e).circle(-17, -7, 3).fill(0x8a6a3e);
   // Piernas
   g.rect(-5, -9, 4, 9).fill(0x2a2a2a);
   g.rect(1, -9, 4, 9).fill(0x2a2a2a);
-  // Mono de trabajo con franja de cinta americana
-  g.roundRect(-7, -24, 14, 16, 3).fill(0x3f6f9f);
+  // Mono de trabajo (color del atuendo) con franja de cinta americana
+  g.roundRect(-7, -24, 14, 16, 3).fill(suit);
   g.rect(-7, -18, 14, 3).fill(0xc9ccd1);
-  if (d.pregnancy) g.ellipse(4, -15, 5, 5).fill(0x3f6f9f);
-  // Cabeza y pelo (más largo en mujeres)
+  if (d.pregnancy) g.ellipse(4, -15, 5, 5).fill(suit);
+  // Arma en la mano
+  if (d.equipment.weapon) g.rect(5, -19, 11, 3).fill(0x777777).rect(13, -21, 3, 7).fill(0x555555);
+  // Cabeza y peinado
   g.circle(0, -30, 6).fill(skin);
-  g.rect(-6, -36, 12, 4).fill(hair);
-  if (d.sex === 'F') g.rect(-6, -34, 3, 9).fill(hair).rect(3, -34, 3, 9).fill(hair);
+  switch (look.style) {
+    case 'short':
+      g.rect(-6, -36, 12, 4).fill(hair);
+      break;
+    case 'long':
+      g.rect(-6, -36, 12, 4).fill(hair).rect(-6, -34, 3, 9).fill(hair).rect(3, -34, 3, 9).fill(hair);
+      break;
+    case 'mohawk':
+      g.rect(-2, -40, 4, 8).fill(hair);
+      break;
+    case 'bald':
+      break;
+  }
 }
 
-const appearanceKey = (d: Dweller) => `${d.sex}|${isAdult(d) ? 'a' : 'c'}|${d.pregnancy ? 'p' : ''}`;
+const appearanceKey = (d: Dweller) =>
+  [
+    isAdult(d) ? 'a' : 'c',
+    d.pregnancy ? 'p' : '',
+    JSON.stringify(resolveAppearance(d)),
+    d.equipment.outfit?.defId,
+    d.equipment.weapon?.defId,
+    d.equipment.pet?.defId,
+  ].join('|');
 
 export class DwellerLayer {
   readonly container = new Container();

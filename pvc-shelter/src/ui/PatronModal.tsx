@@ -2,8 +2,11 @@ import { Baby, Bandage, FlaskConical, Heart, Skull, Smile, X } from 'lucide-reac
 import type { ReactNode } from 'react';
 import { CHILDHOOD_SECONDS, COURTSHIP_SECONDS, PREGNANCY_SECONDS, ROOM_DEFS } from '../core/config';
 import { effectiveMaxHp, isAdult, PATRON_KEYS, PATRON_NAMES, xpToNextLevel } from '../core/Dwellers';
+import { effectiveStat } from '../core/Equipment';
 import { canApplyMed } from '../core/Health';
 import { useGameStore } from '../store/useGameStore';
+import { BarberSection } from './BarberSection';
+import { EquipmentSection } from './EquipmentSection';
 import { HealthBar } from './HealthBar';
 
 function Meter({ value, max, color, label }: { value: number; max: number; color: string; label: ReactNode }) {
@@ -40,7 +43,7 @@ export function PatronModal() {
       <section
         role="dialog"
         aria-label={`Ficha de ${dweller.name}`}
-        className="w-full max-w-sm rounded-xl border-2 border-bunker-600 bg-bunker-800 p-4 shadow-2xl"
+        className="max-h-[90vh] w-full max-w-sm overflow-y-auto rounded-xl border-2 border-bunker-600 bg-bunker-800 p-4 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="mb-3 flex items-start gap-2">
@@ -176,21 +179,35 @@ export function PatronModal() {
           )}
         </div>
 
+        <EquipmentSection dweller={dweller} />
+
         <h3 className="mb-1 text-xs font-bold uppercase tracking-wider text-pvc/50">P.A.T.R.O.N.</h3>
-        <ul className="space-y-1">
-          {PATRON_KEYS.map((k) => (
-            <li key={k} className="flex items-center gap-2 text-sm">
-              <b className="w-4 text-tape">{k}</b>
-              <span className="w-20 text-xs text-pvc/70">{PATRON_NAMES[k]}</span>
-              <div className="flex flex-1 gap-0.5" aria-label={`${PATRON_NAMES[k]} ${dweller.stats[k]} de 10`}>
-                {Array.from({ length: 10 }, (_, i) => (
-                  <span key={i} className={`h-3 flex-1 rounded-sm ${i < dweller.stats[k] ? 'bg-tape' : 'bg-black/50'}`} />
-                ))}
-              </div>
-              <span className="w-5 text-right tabular-nums">{dweller.stats[k]}</span>
-            </li>
-          ))}
+        <ul className="mb-3 space-y-1">
+          {PATRON_KEYS.map((k) => {
+            const base = dweller.stats[k];
+            const bonus = effectiveStat(dweller, k) - base;
+            return (
+              <li key={k} className="flex items-center gap-2 text-sm">
+                <b className="w-4 text-tape">{k}</b>
+                <span className="w-20 text-xs text-pvc/70">{PATRON_NAMES[k]}</span>
+                <div className="flex flex-1 gap-0.5" aria-label={`${PATRON_NAMES[k]} ${base} de 10${bonus ? `, +${bonus} por atuendo` : ''}`}>
+                  {Array.from({ length: 10 }, (_, i) => (
+                    <span
+                      key={i}
+                      className={`h-3 flex-1 rounded-sm ${i < base ? 'bg-tape' : i < base + bonus ? 'bg-emerald-400' : 'bg-black/50'}`}
+                    />
+                  ))}
+                </div>
+                <span className="w-9 text-right tabular-nums">
+                  {base}
+                  {bonus > 0 && <span className="text-emerald-300">+{bonus}</span>}
+                </span>
+              </li>
+            );
+          })}
         </ul>
+
+        <BarberSection key={dweller.id} dweller={dweller} />
 
         {room && (
           <button

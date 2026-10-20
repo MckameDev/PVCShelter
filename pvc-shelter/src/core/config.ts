@@ -1,4 +1,4 @@
-import type { PatronStat, ProducedResource, RoomBlocks, RoomLevel, RoomType } from './types';
+import type { PatronStat, ProducedResource, Rarity, RoomBlocks, RoomLevel, RoomType } from './types';
 
 // Dimensiones del subsuelo (en celdas). Una sala simple ocupa BLOCK_CELLS celdas;
 // un ascensor ocupa 1.
@@ -18,7 +18,7 @@ export const LEVEL_EFFICIENCY: Record<RoomLevel, number> = { 1: 1, 2: 1.5, 3: 2 
 /** Pisos libres de rocas bajo la superficie. */
 export const ROCK_FREE_FLOORS = 2;
 
-export type RoomCategory = 'core' | 'resources' | 'health' | 'utility' | 'training';
+export type RoomCategory = 'core' | 'resources' | 'health' | 'utility' | 'training' | 'crafting';
 
 export const CATEGORY_NAMES: Record<RoomCategory, string> = {
   core: 'Básicas',
@@ -26,6 +26,7 @@ export const CATEGORY_NAMES: Record<RoomCategory, string> = {
   health: 'Salud',
   utility: 'Utilidad',
   training: 'Entrenamiento',
+  crafting: 'Fabricación',
 };
 
 export interface RoomDef {
@@ -260,7 +261,49 @@ export const ROOM_DEFS: Record<RoomType, RoomDef> = {
   'train-N': trainingRoom('N', 'Campo de Ñeque', 'tirando dardos a una diana de lona', 30),
   'train-R': trainingRoom('R', 'Mesa de Rebusque', 'jugando a las cartas', 32),
   'train-O': trainingRoom('O', 'Teatrito de Optimismo', 'actuando en un escenario de cajas', 34),
+
+  // --- Sprint 5 -------------------------------------------------------------
+  'weapon-workshop': room('weapon-workshop', {
+    name: 'Taller de Armas Caseras',
+    description: 'Fabrica armas con planos, chatarra y Codos. Usa Poderío (P).',
+    category: 'crafting',
+    unlockPopulation: 18,
+    stat: 'P',
+    baseCost: 600,
+    costIncrement: 200,
+    upgradeCosts: { 2: 1200, 3: 3000 },
+    energyDraw: 0.05,
+    color: 0x4a3a2a,
+    accent: 0xff7a3d,
+  }),
+  'outfit-workshop': room('outfit-workshop', {
+    name: 'Taller de Costura',
+    description: 'Fabrica atuendos con planos, chatarra y Codos. Usa Tenacidad (T).',
+    category: 'crafting',
+    unlockPopulation: 22,
+    stat: 'T',
+    baseCost: 600,
+    costIncrement: 200,
+    upgradeCosts: { 2: 1200, 3: 3000 },
+    energyDraw: 0.05,
+    color: 0x3d4a6b,
+    accent: 0x9fd0ff,
+  }),
+  barber: room('barber', {
+    name: 'Peluquería La Tijera',
+    description: 'Permite cambiar la apariencia de los habitantes desde su ficha.',
+    category: 'utility',
+    unlockPopulation: 30,
+    mergeable: false,
+    maxLevel: 1,
+    baseCost: 500,
+    costIncrement: 0,
+    energyDraw: 0.02,
+    color: 0x6b2a3a,
+    accent: 0xff5c8a,
+  }),
 };
+
 
 export const BUILDABLE_TYPES: RoomType[] = (Object.keys(ROOM_DEFS) as RoomType[]).filter(
   (t) => ROOM_DEFS[t].buildable,
@@ -391,3 +434,31 @@ export const RADIO_RECRUIT_MAX = 0.9;
 /** Segundos para subir un stat de n a n+1 = TRAINING_SECONDS_PER_POINT × n (÷ eficiencia de nivel). */
 export const TRAINING_SECONDS_PER_POINT = 20;
 export const MAX_BASE_STAT = 10;
+
+// ---------------------------------------------------------------------------
+// Sprint 5: inventario, chatarra, fabricación y peluquería
+// ---------------------------------------------------------------------------
+
+/** Inventario inicial: algo de equipo básico para que el sistema se vea desde el principio. */
+export const STARTING_INVENTORY = {
+  items: ['lead-pipe', 'lead-pipe', 'work-overall', 'parrot'],
+  junk: { common: 8, rare: 2, legendary: 0 } as Record<Rarity, number>,
+  /** Planos conocidos al empezar; el resto se encontrará en el Yermo (Sprint 7). */
+  recipes: ['lead-pipe', 'wrench', 'nail-gun', 'work-overall', 'tape-vest', 'plumber-suit'],
+};
+
+/** Costo y duración base de fabricar según la rareza del objeto. */
+export const CRAFT_COSTS: Record<Rarity, { junk: Partial<Record<Rarity, number>>; codos: number; seconds: number }> = {
+  common: { junk: { common: 3 }, codos: 50, seconds: 60 },
+  rare: { junk: { common: 4, rare: 3 }, codos: 200, seconds: 180 },
+  legendary: { junk: { common: 5, rare: 4, legendary: 2 }, codos: 800, seconds: 480 },
+};
+
+/** Chatarra obtenida al desguazar un objeto según su rareza. */
+export const SCRAP_YIELD: Record<Rarity, Partial<Record<Rarity, number>>> = {
+  common: { common: 2 },
+  rare: { common: 1, rare: 2 },
+  legendary: { rare: 2, legendary: 1 },
+};
+
+export const BARBER_COST = 50;

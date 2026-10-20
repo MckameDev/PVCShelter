@@ -2,12 +2,16 @@ import { create } from 'zustand';
 import * as Bunker from '../core/Bunker';
 import { assignDweller, PATRON_NAMES } from '../core/Dwellers';
 import { buildCost, demolishRefund, rockClearCost, upgradeCost } from '../core/Economy';
+import { restyleDweller } from '../core/Barber';
+import { collectCraft, startCraft } from '../core/Crafting';
 import { applyMed, MED_NAMES } from '../core/Health';
+import { equipItem, scrapItem, unequipItem } from '../core/Inventory';
+import { ITEMS, RARITY_NAMES } from '../core/items';
 import * as Grid from '../core/GridManager';
 import { collectResource, RESOURCE_NAMES, rushRoom } from '../core/Production';
 import { advance } from '../core/Simulation';
 import type { SimEvent } from '../core/Simulation';
-import type { GameData, MedResource, ProducedResource, Rng, RoomType } from '../core/types';
+import type { Appearance, GameData, ItemKind, MedResource, ProducedResource, Rarity, Rng, RoomType } from '../core/types';
 
 export type Selection = { kind: 'room'; id: string } | { kind: 'rock'; id: string } | null;
 
@@ -25,6 +29,7 @@ interface UiState {
   dwellersOpen: boolean;
   /** Habitante cuya ficha P.A.T.R.O.N. está abierta. */
   dwellerModalId: string | null;
+  inventoryOpen: boolean;
 }
 
 interface Actions {
@@ -44,6 +49,13 @@ interface Actions {
   rush: (roomId: string) => boolean;
   setDwellersOpen: (open: boolean) => void;
   openDweller: (dwellerId: string | null) => void;
+  setInventoryOpen: (open: boolean) => void;
+  equip: (dwellerId: string, itemId: string) => boolean;
+  unequip: (dwellerId: string, slot: ItemKind) => boolean;
+  scrap: (itemId: string) => boolean;
+  craft: (roomId: string, defId: string) => boolean;
+  collectCrafted: (roomId: string) => boolean;
+  restyle: (dwellerId: string, appearance: Appearance) => boolean;
   dismissNotice: () => void;
 }
 
@@ -64,6 +76,7 @@ const pickData = (s: GameState): GameData => ({
   resources: s.resources,
   dwellers: s.dwellers,
   runtime: s.runtime,
+  inventory: s.inventory,
   nextDwellerId: s.nextDwellerId,
   time: s.time,
 });
@@ -75,6 +88,7 @@ const freshState = (seed: number): GameData & UiState => ({
   notice: null,
   dwellersOpen: false,
   dwellerModalId: null,
+  inventoryOpen: false,
 });
 
 const INCIDENT_NAMES = { fire: 'el incendio', roaches: 'la plaga de cucarachas' } as const;
@@ -268,6 +282,56 @@ export const useGameStore = create<GameState>()((set, get) => {
 
 
     openDweller: (dwellerId) => set({ dwellerModalId: dwellerId }),
+
+    setInventoryOpen: (open) => set({ inventoryOpen: open }),
+
+    equip: (dwellerId, itemId) => {
+      const res = equipItem(pickData(get()), dwellerId, itemId);
+      if (!res.ok) return fail(res.reason);
+      set(res.value);
+      return true;
+    },
+
+    unequip: (dwellerId, slot) => {
+      const res = unequipItem(pickData(get()), dwellerId, slot);
+      if (!res.ok) return fail(res.reason);
+      set(res.value);
+      return true;
+    },
+
+    scrap: (itemId) => {
+      const state = get();
+      const item = state.inventory.items[itemId];
+      const res = scrapItem(pickData(state), itemId);
+      if (!res.ok || !item) return fail(res.ok ? 'El objeto no existe.' : res.reason);
+      const gained = (Object.entries(res.value.junk) as [Rarity, number][])
+        .map(([rarity, n]) => `+${n} ${RARITY_NAMES[rarity].toLowerCase()}`)
+        .join(', ');
+      set({ ...res.value.data, notice: notice(`Desguazaste ${ITEMS[item.defId].name}: chatarra ${gained}.`, 'info') });
+      return true;
+    },
+
+    craft: (roomId, defId) => {
+      const res = startCraft(pickData(get()), roomId, defId);
+      if (!res.ok) return fail(res.reason);
+      set({ ...res.value, notice: notice(`Fabricando ${ITEMS[defId].name}…`, 'info') });
+      return true;
+    },
+
+    collectCrafted: (roomId) => {
+      const res = collectCraft(pickData(get()), roomId);
+      if (!res.ok) return fail(res.reason);
+      set({ ...res.value.data, notice: notice(`¡${ITEMS[res.value.item.defId].name} terminado! Está en el inventario.`, 'success') });
+      return true;
+    },
+
+    restyle: (dwellerId, appearance) => {
+      const res = restyleDweller(pickData(get()), dwellerId, appearance);
+      if (!res.ok) return fail(res.reason);
+      set({ ...res.value, notice: notice('¡Nuevo look!', 'success') });
+      return true;
+    },
+
 
     dismissNotice: () => set({ notice: null }),
   };

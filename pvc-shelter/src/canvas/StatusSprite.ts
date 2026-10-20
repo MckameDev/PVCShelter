@@ -58,9 +58,20 @@ interface RoomStatus {
   capacity: number;
   /** Duración del ciclo actual, o null si la sala no está produciendo. */
   cycle: number | null;
+  /** Talleres: duración total de la fabricación en curso (null si no avanza). */
+  craftTotal: number | null;
 }
 
-export function drawRoomStatus(g: Graphics, { room, runtime, workers, capacity, cycle }: RoomStatus, timeMs: number) {
+/** Icono de "objeto terminado" de los talleres: caja con una estrella. */
+function drawCraftIcon(g: Graphics, cx: number, cy: number, r: number, color: number) {
+  g.circle(cx, cy, r + 3).fill({ color: 0x000000, alpha: 0.35 });
+  g.circle(cx, cy, r).fill(color).stroke({ width: 2, color: 0xffffff });
+  g.rect(cx - 7, cy - 4, 14, 11).fill(0x1b1410);
+  g.rect(cx - 8, cy - 7, 16, 4).fill(0x1b1410);
+  g.rect(cx - 1, cy - 7, 2, 14).fill(color);
+}
+
+export function drawRoomStatus(g: Graphics, { room, runtime, workers, capacity, cycle, craftTotal }: RoomStatus, timeMs: number) {
   const def = ROOM_DEFS[room.type];
   const x0 = room.col * CELL_W;
   const y0 = room.floor * FLOOR_H;
@@ -102,6 +113,19 @@ export function drawRoomStatus(g: Graphics, { room, runtime, workers, capacity, 
     const frac = runtime.incident.hp / runtime.incident.maxHp;
     g.rect(x0 + 10, y0 + 28, w - 20, 5).fill(0x000000);
     g.rect(x0 + 10, y0 + 28, (w - 20) * frac, 5).fill(0xff4a3a);
+  }
+
+  // Talleres: progreso de la fabricación o icono para recoger el objeto.
+  if (runtime.craft) {
+    if (runtime.ready) {
+      const { x, y } = readyIconCenter(room);
+      drawCraftIcon(g, x, y + Math.sin(timeMs / 250) * 3, READY_ICON_RADIUS, def.accent);
+    } else if (craftTotal !== null && runtime.powered && !runtime.incident) {
+      const frac = Math.min(1, runtime.craft.progress / craftTotal);
+      g.rect(x0 + 10, y0 + h - 22, w - 20, 4).fill({ color: 0x000000, alpha: 0.6 });
+      g.rect(x0 + 10, y0 + h - 22, (w - 20) * frac, 4).fill(def.accent);
+    }
+    return;
   }
 
   // Salas con ciclo: producción (con icono para recolectar) o transmisión de radio.

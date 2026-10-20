@@ -27,6 +27,8 @@ import {
   updateTraining,
 } from './LifeCycle';
 import type { LifeEvent } from './LifeCycle';
+import { craftTime, WORKSHOP_KIND } from './Crafting';
+import { effectiveStat, petBonus, weaponDamage } from './Equipment';
 import { cycleTime, getRuntime } from './Production';
 import { createRng, hashString } from './random';
 import type { Dweller, GameData, GridState, IncidentKind, Room, RoomRuntime } from './types';
@@ -178,7 +180,12 @@ export function simulate(data: GameData, dt: number): { data: GameData; events: 
     const rt = runtime[room.id];
     if (!rt.incident) continue;
     const workers = workersByRoom.get(room.id) ?? [];
-    const dps = workers.reduce((sum, w) => sum + DWELLER_BASE_DPS + w.stats.P * DWELLER_DPS_PER_P, 0);
+    // Daño: base + Poderío + arma, potenciado por mascotas de combate.
+    const dps = workers.reduce(
+      (sum, w) =>
+        sum + (DWELLER_BASE_DPS + effectiveStat(w, 'P') * DWELLER_DPS_PER_P + weaponDamage(w)) * (1 + petBonus(w, 'damage')),
+      0,
+    );
     const hp = rt.incident.hp - dps * dt;
     if (workers.length > 0) {
       const share = (INCIDENT_DPS_PER_BLOCK * room.blocks * dt) / workers.length;
@@ -227,7 +234,7 @@ export function simulate(data: GameData, dt: number): { data: GameData; events: 
     if (t === null) continue;
     const progress = rt.progress + dt;
     runtime[room.id] = progress >= t ? { ...rt, progress: t, ready: true } : { ...rt, progress };
-    for (const w of workers) dwellers[w.id].xp += w.stats[stat] * XP_PER_STAT_SECOND * dt;
+    for (const w of workers) dwellers[w.id].xp += effectiveStat(w, stat) * XP_PER_STAT_SECOND * dt * (1 + petBonus(w, 'xp'));
   }
 
   // 5b. Entrenamiento y radio (salas con energía y sin incidentes).
@@ -238,6 +245,14 @@ export function simulate(data: GameData, dt: number): { data: GameData; events: 
     const occupants = (workersByRoom.get(room.id) ?? []).map((w) => dwellers[w.id]).filter((d) => d.alive);
 
     if (ROOM_DEFS[room.type].trains) updateTraining(room, occupants, dt, life);
+
+    // Talleres: avanza la fabricación en curso.
+    if (WORKSHOP_KIND[room.type] && rt.craft && !rt.ready) {
+      const t = craftTime(room, rt.craft.defId, occupants);
+      if (t === null) continue;
+      const progress = rt.craft.progress + dt;
+      runtime[room.id] = { ...rt, craft: { ...rt.craft, progress: Math.min(progress, t) }, ready: progress >= t };
+    }
 
     if (room.type === 'radio') {
       const t = cycleTime(room, occupants, happiness);

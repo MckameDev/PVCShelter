@@ -25,6 +25,11 @@ src/
 │   ├── Dwellers.ts      Habitantes (stats P.A.T.R.O.N., parentesco, niveles, población, asignación)
 │   ├── LifeCycle.ts     Niveles, felicidad, cortejo, embarazo, nacimiento, niñez, entrenamiento y radio
 │   ├── Health.ts        Uso de curativos (Vendas Caseras y Desintoxicantes)
+│   ├── items.ts         Catálogo de armas, atuendos y mascotas
+│   ├── Equipment.ts     Efectos del equipo (stat efectivo, daño de arma, bonos de mascota)
+│   ├── Inventory.ts     Inventario: equipar, quitar, desguazar
+│   ├── Crafting.ts      Fabricación en talleres (planos + chatarra + Codos)
+│   ├── Barber.ts        Cambio de apariencia en la Peluquería
 │   ├── Pathfinding.ts   Rutas entre salas (Dijkstra; ascensores como aristas verticales)
 │   ├── Production.ts    Ciclos de producción, recolección y Modo Exprés
 │   ├── Simulation.ts    Tick determinista: energía por distancia, consumo, salud, incidentes
@@ -37,7 +42,8 @@ src/
 │   ├── StatusSprite.ts  Progreso, iconos de recolección, apagones e incidentes (cada frame)
 │   ├── DwellerSprite.ts Habitantes: dibujo, caminata por waypoints y arrastre
 │   └── TerrainSprite.ts Cielo, superficie y subsuelo
-└── ui/        Interfaz React + Tailwind (TopBar, BuildMenu, SelectionPanel, DwellersPanel, PatronModal, Toast)
+└── ui/        Interfaz React + Tailwind (TopBar, BuildMenu, SelectionPanel, DwellersPanel, PatronModal,
+               InventoryPanel, EquipmentSection, CraftingSection, BarberSection, Toast)
 ```
 
 Reglas de dependencia: `core/` no importa nada del resto; `canvas/` y `ui/` leen el store y despachan acciones, nunca mutan el estado directamente.
@@ -58,5 +64,6 @@ En desarrollo (`npm run dev`) el store está disponible en la consola como `wind
 - **Tocar una roca**: romperla pagando Codos de PVC.
 - **Habitantes**: arrastrarlos a otra sala (verde = válida, rojo = no). Tocar uno abre su ficha P.A.T.R.O.N. También se asignan desde el panel de la sala; el botón de población abre la lista completa.
 - **Progresión**: las salas se desbloquean por población (pestañas del menú de construcción). Enfermería y Planta Depuradora producen curativos que se usan desde la ficha del habitante; las salas de entrenamiento suben un stat hasta 10; Almacenes y Barracones amplían inventario y población; la radio sube la felicidad y atrae gente.
+- **Equipo y fabricación**: en la ficha del habitante se equipan arma, atuendo y mascota. El botón de mochila abre el inventario (desguazar, chatarra, planos). Los talleres fabrican desde su panel; tocar el icono flotante recoge el objeto. Con una Peluquería, la ficha permite cambiar la apariencia.
 - **Reproducción**: un hombre y una mujer adultos sin parentesco en una Sala de Descanso se cortejan; luego vienen embarazo, nacimiento y niñez (los niños comen pero no trabajan).
 - **Producción**: tocar el icono flotante recolecta todas las salas listas de ese recurso. **Exprés** produce al instante con un % de fallo; si falla, provoca un incidente.

@@ -13,7 +13,10 @@ import {
   Mic,
   Package,
   Radio,
+  Scissors,
+  Shirt,
   Sprout,
+  Swords,
   Warehouse,
   Zap,
 } from 'lucide-react';
@@ -38,6 +41,9 @@ export const ROOM_ICONS: Record<RoomType, LucideIcon> = {
   'train-R': Dices,
   'train-O': Mic,
   'train-N': Crosshair,
+  'weapon-workshop': Swords,
+  'outfit-workshop': Shirt,
+  barber: Scissors,
 };
 
 /** Color CSS a partir del acento hex de RoomDef. */

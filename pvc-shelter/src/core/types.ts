@@ -16,7 +16,11 @@ export type RoomType =
   | 'storage'
   | 'barracks'
   | 'radio'
-  | TrainingRoomType;
+  | TrainingRoomType
+  // Sprint 5
+  | 'weapon-workshop'
+  | 'outfit-workshop'
+  | 'barber';
 
 /** Letra del sistema P.A.T.R.O.N. que usa una sala para producir. */
 export type PatronStat = 'P' | 'A' | 'T' | 'R' | 'O' | 'N';
@@ -106,6 +110,48 @@ export interface Dweller {
   courtship: { partnerId: string; progress: number } | null;
   /** Segundos entrenando hacia el siguiente punto del stat de su sala de entrenamiento. */
   training: number;
+  /** Ranuras de equipo: los objetos equipados salen del inventario. */
+  equipment: Equipment;
+  /** Apariencia elegida en la Peluquería; null = la generada a partir de su id. */
+  appearance: Appearance | null;
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 5: objetos, equipo, chatarra y fabricación
+// ---------------------------------------------------------------------------
+
+export type ItemKind = 'weapon' | 'outfit' | 'pet';
+export type Rarity = 'common' | 'rare' | 'legendary';
+export type PetBonus = 'production' | 'xp' | 'damage' | 'training';
+
+/** Instancia concreta de un objeto del catálogo (core/items.ts). */
+export interface Item {
+  id: string;
+  defId: string;
+}
+
+export interface Equipment {
+  weapon: Item | null;
+  outfit: Item | null;
+  pet: Item | null;
+}
+
+export type HairStyle = 'short' | 'long' | 'mohawk' | 'bald';
+
+export interface Appearance {
+  /** Índices de las paletas de canvas/DwellerSprite. */
+  skin: number;
+  hair: number;
+  style: HairStyle;
+}
+
+export interface Inventory {
+  /** Objetos sin equipar; ocupan plazas (ver itemCapacity). */
+  items: Record<string, Item>;
+  junk: Record<Rarity, number>;
+  /** Planos conocidos (ids de catálogo que se pueden fabricar). */
+  recipes: string[];
+  nextItemId: number;
 }
 
 export type IncidentKind = 'fire' | 'roaches';
@@ -126,6 +172,8 @@ export interface RoomRuntime {
   rushHeat: number;
   powered: boolean;
   incident: Incident | null;
+  /** Fabricación en curso en un taller; `ready` indica que el objeto está terminado. */
+  craft: { defId: string; progress: number } | null;
 }
 
 /** Estado completo y serializable de una partida. */
@@ -134,7 +182,9 @@ export interface GameData {
   resources: Resources;
   dwellers: Record<string, Dweller>;
   runtime: Record<string, RoomRuntime>;
+  inventory: Inventory;
   nextDwellerId: number;
+
   /** Segundos simulados desde el inicio de la partida. */
   time: number;
 }

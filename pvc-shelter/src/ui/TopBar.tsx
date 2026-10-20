@@ -1,8 +1,8 @@
-import { Bandage, Disc3, Droplets, FlaskConical, Smile, Users, Utensils, Wrench, Zap } from 'lucide-react';
+import { Backpack, Bandage, Disc3, Droplets, FlaskConical, Smile, Users, Utensils, Wrench, Zap } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useMemo } from 'react';
 import { globalHappiness, populationCap } from '../core/Dwellers';
-import { storageCap } from '../core/Economy';
+import { itemCapacity, storageCap } from '../core/Economy';
 import { RESOURCE_NAMES } from '../core/Production';
 import { requiredEnergy } from '../core/Simulation';
 import type { VitalResource } from '../core/types';
@@ -46,6 +46,8 @@ export function TopBar() {
   const setDwellersOpen = useGameStore((s) => s.setDwellersOpen);
   const stimpaks = useGameStore((s) => s.resources.stimpaks);
   const radaways = useGameStore((s) => s.resources.radaways);
+  const itemCount = useGameStore((s) => Object.keys(s.inventory.items).length);
+  const setInventoryOpen = useGameStore((s) => s.setInventoryOpen);
 
   // Los topes solo cambian cuando cambia el grid, no en cada tick.
   const caps = useMemo(
@@ -57,6 +59,7 @@ export function TopBar() {
       population: populationCap(grid),
       stimpaks: storageCap(grid, 'stimpaks'),
       radaways: storageCap(grid, 'radaways'),
+      items: itemCapacity(grid),
     }),
     [grid],
   );
@@ -88,6 +91,18 @@ export function TopBar() {
         <span className="font-bold tabular-nums">{happiness}%</span>
       </div>
       <div className="ml-auto flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setInventoryOpen(true)}
+          className="flex items-center gap-1.5 rounded-lg bg-bunker-900/70 px-3 py-2 hover:bg-bunker-600"
+          title="Inventario: armas, atuendos, mascotas y chatarra"
+        >
+          <Backpack size={16} />
+          <span className="font-bold tabular-nums">
+            {itemCount}
+            <span className="font-normal text-pvc/50">/{caps.items}</span>
+          </span>
+        </button>
         <div
           className="flex items-center gap-1.5 rounded-lg bg-bunker-900/70 px-3 py-2"
           title={`Vendas Caseras ${stimpaks}/${caps.stimpaks} · Desintoxicantes ${radaways}/${caps.radaways}`}

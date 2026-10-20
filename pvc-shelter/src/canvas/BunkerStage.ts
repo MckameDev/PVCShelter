@@ -1,9 +1,11 @@
 import { Application, Container, Graphics, Text } from 'pixi.js';
 import { ROOM_DEFS } from '../core/config';
-import { assignDweller, dwellersInRoom } from '../core/Dwellers';
+import { craftTime } from '../core/Crafting';
+import { assignDweller, dwellersInRoom, globalHappiness } from '../core/Dwellers';
 import { buildCost, roomCapacity } from '../core/Economy';
 import { findRockAt, findRoomAt, getValidPlacements, roomWidth } from '../core/GridManager';
 import type { Placement } from '../core/GridManager';
+import type { ProducedResource } from '../core/types';
 import { useGameStore } from '../store/useGameStore';
 import { cycleTime, getRuntime } from '../core/Production';
 import { DwellerLayer } from './DwellerSprite';
@@ -451,26 +453,37 @@ export class BunkerStage {
     const state = useGameStore.getState();
     const g = this.statusLayer.clear();
     const now = performance.now();
+    const happiness = globalHappiness(state);
     for (const room of Object.values(state.grid.rooms)) {
       const capacity = roomCapacity(room);
       if (capacity === 0) continue;
       const workers = dwellersInRoom(state, room.id);
+      const runtime = getRuntime(state, room.id);
       drawRoomStatus(
         g,
-        { room, runtime: getRuntime(state, room.id), workers: workers.length, capacity, cycle: cycleTime(room, workers) },
+        {
+          room,
+          runtime,
+          workers: workers.length,
+          capacity,
+          cycle: cycleTime(room, workers, happiness),
+          craftTotal: runtime.craft ? craftTime(room, runtime.craft.defId, workers) : null,
+        },
         now,
       );
     }
   };
 
   /** Si el punto cae sobre el icono de una sala lista, devuelve el recurso a recolectar. */
-  private pickReadyIcon(world: Point) {
+  /** Icono flotante bajo el punto: recurso para recolectar u objeto terminado en un taller. */
+  private pickReadyIcon(world: Point): { roomId: string; resource: ProducedResource | null } | null {
     const state = useGameStore.getState();
     const room = findRoomAt(state.grid, Math.floor(world.y / FLOOR_H), Math.floor(world.x / CELL_W));
-    const resource = room ? ROOM_DEFS[room.type].produces : null;
-    if (!room || !resource || !getRuntime(state, room.id).ready) return null;
+    if (!room || !getRuntime(state, room.id).ready) return null;
+    const resource = ROOM_DEFS[room.type].produces;
+    if (!resource && !getRuntime(state, room.id).craft) return null;
     const c = readyIconCenter(room);
-    return Math.hypot(world.x - c.x, world.y - c.y) <= READY_ICON_RADIUS + 8 ? resource : null;
+    return Math.hypot(world.x - c.x, world.y - c.y) <= READY_ICON_RADIUS + 8 ? { roomId: room.id, resource } : null;
   }
 
   private handleTap(screen: Point): void {
@@ -478,9 +491,10 @@ export class BunkerStage {
     const world = this.screenToWorld(screen);
 
     if (!state.buildType) {
-      const resource = this.pickReadyIcon(world);
-      if (resource) {
-        state.collect(resource);
+      const icon = this.pickReadyIcon(world);
+      if (icon) {
+        if (icon.resource) state.collect(icon.resource);
+        else state.collectCrafted(icon.roomId);
         return;
       }
     }

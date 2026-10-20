@@ -18,6 +18,7 @@ import {
   TRAINING_SECONDS_PER_POINT,
 } from './config';
 import { areRelated, bestStatValue, createChild, isAdult, xpToNextLevel } from './Dwellers';
+import { effectiveStat, petBonus } from './Equipment';
 import { createRng } from './random';
 import type { Dweller, GridState, PatronStat, Room, RoomRuntime } from './types';
 
@@ -102,7 +103,7 @@ export function updateTraining(room: Room, occupants: Dweller[], dt: number, eve
       d.training = 0;
       continue;
     }
-    d.training += dt;
+    d.training += dt * (1 + petBonus(d, 'training'));
     if (d.training >= trainingSeconds(d.stats[stat], room)) {
       d.training = 0;
       d.stats = { ...d.stats, [stat]: d.stats[stat] + 1 };
@@ -125,7 +126,7 @@ export function radioHappinessBonus(rooms: Room[], runtime: Record<string, RoomR
 /** Probabilidad de atraer a alguien al terminar una transmisión (escala con el Optimismo medio). */
 export function recruitChance(workers: Dweller[]): number {
   if (workers.length === 0) return 0;
-  const avgO = workers.reduce((sum, w) => sum + w.stats.O, 0) / workers.length;
+  const avgO = workers.reduce((sum, w) => sum + effectiveStat(w, 'O'), 0) / workers.length;
   return Math.min(RADIO_RECRUIT_MAX, RADIO_RECRUIT_BASE + avgO * RADIO_RECRUIT_PER_O);
 }
 
@@ -150,7 +151,7 @@ export function updateCourtship(occupants: Dweller[], dt: number, events: LifeEv
     if (!partner || !woman.courtship) continue;
     taken.add(partner.id);
 
-    const speed = (partner.stats.O + woman.stats.O) / (2 * REFERENCE_STAT);
+    const speed = (effectiveStat(partner, 'O') + effectiveStat(woman, 'O')) / (2 * REFERENCE_STAT);
     woman.courtship = { ...woman.courtship, progress: woman.courtship.progress + speed * dt };
     if (woman.courtship.progress >= COURTSHIP_SECONDS) {
       woman.courtship = null;

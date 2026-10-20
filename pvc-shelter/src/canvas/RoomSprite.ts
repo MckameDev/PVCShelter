@@ -202,10 +202,38 @@ function drawDecor(g: Graphics, type: RoomType, x0: number, h: number, accent: n
       g.rect(x0 + 20, floorY - 4, 40, 4).fill(0x8a6a3e);
       break;
     }
+    case 'weapon-workshop': {
+      // Banco de trabajo con tornillo y herramientas colgadas
+      g.rect(x0 + 14, floorY - 24, 90, 6).fill(0x8a6a3e);
+      g.rect(x0 + 18, floorY - 18, 4, 18).fill(0x5c3a1f).rect(x0 + 96, floorY - 18, 4, 18).fill(0x5c3a1f);
+      g.rect(x0 + 30, floorY - 34, 14, 10).fill(0x555555);
+      g.rect(x0 + 14, 22, 90, 18).fill({ color: 0x000000, alpha: 0.2 });
+      for (let i = 0; i < 5; i++) g.rect(x0 + 22 + i * 17, 24, 4, 14).fill(i % 2 ? accent : 0xaaaaaa);
+      g.circle(x0 + 120, floorY - 12, 10).fill(0x333333).circle(x0 + 120, floorY - 12, 4).fill(accent);
+      break;
+    }
+    case 'outfit-workshop': {
+      // Máquina de coser y maniquí con lona
+      g.rect(x0 + 14, floorY - 22, 50, 22).fill(0x5c3a1f);
+      g.roundRect(x0 + 22, floorY - 40, 34, 18, 4).fill(0x2a2a2a).rect(x0 + 50, floorY - 34, 3, 12).fill(0xaaaaaa);
+      g.circle(x0 + 104, floorY - 50, 6).fill(0xcfc6b8);
+      g.roundRect(x0 + 94, floorY - 44, 20, 26, 4).fill(accent);
+      g.rect(x0 + 102, floorY - 18, 4, 18).fill(0x555555);
+      break;
+    }
+    case 'barber': {
+      // Sillón, espejo y poste de barbería
+      g.roundRect(x0 + 30, floorY - 28, 34, 16, 4).fill(0x8a2f2f).rect(x0 + 44, floorY - 12, 6, 12).fill(0x555555);
+      g.roundRect(x0 + 30, floorY - 46, 8, 20, 3).fill(0x8a2f2f);
+      g.roundRect(x0 + 74, 24, 30, 36, 4).fill(0xbfd9e6).stroke({ width: 3, color: 0x8a6a3e });
+      for (let i = 0; i < 4; i++) g.rect(x0 + 118, 22 + i * 12, 8, 6).fill(i % 2 ? 0xffffff : accent);
+      break;
+    }
     case 'elevator':
       break;
   }
 }
+
 
 
 function drawElevator(g: Graphics, w: number, h: number, accent: number) {

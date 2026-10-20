@@ -18,6 +18,7 @@ import {
 } from './config';
 import { dwellersInRoom } from './Dwellers';
 import { roomCapacity, roomEfficiency, storageCap } from './Economy';
+import { averagePetBonus, effectiveStat } from './Equipment';
 import { randomInt } from './random';
 import { fail, ok } from './types';
 import type { Dweller, GameData, IncidentKind, PatronStat, ProducedResource, Result, Rng, Room, RoomRuntime } from './types';
@@ -33,15 +34,16 @@ export const RESOURCE_NAMES: Record<ProducedResource, string> = {
 };
 
 export function emptyRuntime(): RoomRuntime {
-  return { progress: 0, ready: false, rushHeat: 0, powered: true, incident: null };
+  return { progress: 0, ready: false, rushHeat: 0, powered: true, incident: null, craft: null };
 }
 
 export function getRuntime(data: Pick<GameData, 'runtime'>, roomId: string): RoomRuntime {
   return data.runtime[roomId] ?? emptyRuntime();
 }
 
+/** Suma de stats efectivos (base + atuendo) de un grupo de trabajadores. */
 export function statSum(workers: Dweller[], stat: PatronStat): number {
-  return workers.reduce((sum, d) => sum + d.stats[stat], 0);
+  return workers.reduce((sum, d) => sum + effectiveStat(d, stat), 0);
 }
 
 /**
@@ -56,7 +58,8 @@ export function cycleTime(room: Room, workers: Dweller[], happiness = 0.5): numb
   const sum = statSum(workers, def.stat);
   if (sum <= 0) return null;
   const t = (def.cycleSeconds * roomCapacity(room) * REFERENCE_STAT) / sum;
-  const speed = HAPPINESS_SPEED_MIN + happiness * HAPPINESS_SPEED_RANGE;
+  // Felicidad global y mascotas de producción (p. ej. Loro Reciclador) aceleran el ciclo.
+  const speed = (HAPPINESS_SPEED_MIN + happiness * HAPPINESS_SPEED_RANGE) * (1 + averagePetBonus(workers, 'production'));
   return Math.max(t / speed, def.cycleSeconds * MIN_CYCLE_FACTOR);
 }
 

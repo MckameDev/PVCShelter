@@ -4,6 +4,7 @@ import { useGameStore } from './store/useGameStore';
 import { BuildMenu } from './ui/BuildMenu';
 import { DwellersPanel } from './ui/DwellersPanel';
 import { GameCanvas } from './ui/GameCanvas';
+import { InventoryPanel } from './ui/InventoryPanel';
 import { PatronModal } from './ui/PatronModal';
 import { SelectionPanel } from './ui/SelectionPanel';
 import { Toast } from './ui/Toast';
@@ -23,7 +24,9 @@ export default function App() {
       if (e.key !== 'Escape') return;
       const { buildType, cancelBuild, dwellersOpen, setDwellersOpen, select, dwellerModalId, openDweller } =
         useGameStore.getState();
+      const { inventoryOpen, setInventoryOpen } = useGameStore.getState();
       if (dwellerModalId) openDweller(null);
+      else if (inventoryOpen) setInventoryOpen(false);
       else if (buildType) cancelBuild();
       else if (dwellersOpen) setDwellersOpen(false);
       else select(null);
@@ -40,6 +43,7 @@ export default function App() {
         <TopBar />
         <Toast />
         <DwellersPanel />
+        <InventoryPanel />
         <SelectionPanel />
         <BuildMenu />
         <PatronModal />

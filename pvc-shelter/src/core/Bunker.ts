@@ -1,5 +1,6 @@
 import { ROOM_DEFS, STARTING_DWELLERS, STARTING_RESOURCES } from './config';
 import { dwellersInRoom, generateDwellers, livingCount } from './Dwellers';
+import { createStartingInventory } from './Inventory';
 import * as Grid from './GridManager';
 import { emptyRuntime, getRuntime } from './Production';
 import { createRng } from './random';
@@ -15,7 +16,15 @@ export function createNewGame(seed: number): GameData {
   const { dwellers, nextId } = generateDwellers(createRng(seed ^ 0x5bd1e995), STARTING_DWELLERS, 1);
   const runtime: Record<string, RoomRuntime> = {};
   for (const id of Object.keys(grid.rooms)) runtime[id] = emptyRuntime();
-  return { grid, resources: { ...STARTING_RESOURCES }, dwellers, runtime, nextDwellerId: nextId, time: 0 };
+  return {
+    grid,
+    resources: { ...STARTING_RESOURCES },
+    dwellers,
+    runtime,
+    inventory: createStartingInventory(),
+    nextDwellerId: nextId,
+    time: 0,
+  };
 }
 
 /**
@@ -31,6 +40,7 @@ export function applyRoomChange(data: GameData, change: Grid.RoomChange): GameDa
     rushHeat: Math.max(...group.map((r) => r.rushHeat)),
     powered: group.every((r) => r.powered),
     incident: group.find((r) => r.incident)?.incident ?? null,
+    craft: group.find((r) => r.craft)?.craft ?? null,
   };
   for (const id of change.absorbedIds) delete runtime[id];
 
@@ -60,6 +70,7 @@ export function canDemolish(data: GameData, roomId: string): Result<Room> {
   if (!check.ok) return check;
   if (dwellersInRoom(data, roomId).length > 0) return fail('Saca primero a los habitantes de la sala.');
   if (getRuntime(data, roomId).incident) return fail('No se puede demoler durante un incidente.');
+  if (getRuntime(data, roomId).craft) return fail('Recoge o termina la fabricación antes de demoler el taller.');
   return check;
 }
 

@@ -56,6 +56,8 @@ function baseDweller(id: string, name: string, sex: Dweller['sex'], stats: Patro
     pregnancy: null,
     courtship: null,
     training: 0,
+    equipment: { weapon: null, outfit: null, pet: null },
+    appearance: null,
   };
 }
 
