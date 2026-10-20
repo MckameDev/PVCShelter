@@ -150,7 +150,7 @@ describe('reproducción', () => {
     data = patch(data, woman.id, { pregnancy: { fatherId: 'x', elapsed: 0 } });
     data = {
       ...data,
-      runtime: { ...data.runtime, [roomId]: { ...data.runtime[roomId], incident: { kind: 'fire', hp: 100, maxHp: 100 } } },
+      runtime: { ...data.runtime, [roomId]: { ...data.runtime[roomId], incident: { kind: 'fire', hp: 100, maxHp: 100, spread: 0 } } },
     };
     const res = simulate(data, 0.25);
     expect(res.data.dwellers[woman.id].roomId).toBeNull();

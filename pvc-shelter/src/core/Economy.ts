@@ -1,6 +1,7 @@
 import {
   BASE_STORAGE,
   DWELLERS_PER_BLOCK,
+  ENTRANCE_GUARDS,
   ITEM_BASE_CAPACITY,
   ITEM_CAPACITY_PER_STORAGE_BLOCK,
   LEVEL_EFFICIENCY,
@@ -48,9 +49,10 @@ export function demolishRefund(room: Room): number {
 }
 
 /** Salas sin puestos de trabajo (pasivas o de paso). */
-const NO_WORKERS: RoomType[] = ['elevator', 'entrance', 'storage', 'barracks', 'barber'];
+const NO_WORKERS: RoomType[] = ['elevator', 'storage', 'barracks', 'barber'];
 
 export function roomCapacity(room: Room): number {
+  if (room.type === 'entrance') return ENTRANCE_GUARDS; // guardias de la puerta
   return NO_WORKERS.includes(room.type) ? 0 : DWELLERS_PER_BLOCK * room.blocks;
 }
 

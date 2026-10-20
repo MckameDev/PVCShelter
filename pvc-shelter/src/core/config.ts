@@ -1,4 +1,4 @@
-import type { PatronStat, ProducedResource, Rarity, RoomBlocks, RoomLevel, RoomType } from './types';
+import type { IncidentKind, PatronStat, ProducedResource, Rarity, RaidKind, RoomBlocks, RoomLevel, RoomType } from './types';
 
 // Dimensiones del subsuelo (en celdas). Una sala simple ocupa BLOCK_CELLS celdas;
 // un ascensor ocupa 1.
@@ -362,14 +362,11 @@ export const RUSH_FAIL_MAX = 0.95;
 /** Segundos para que se enfríe un uso consecutivo de Exprés. */
 export const RUSH_HEAT_DECAY_SECONDS = 120;
 
-// Incidentes (versión mínima; propagación y combate completo en el Sprint 6)
-export const INCIDENT_HP_PER_BLOCK = 40;
-/** Daño por segundo que el incidente reparte entre los habitantes de la sala, por bloque. */
-export const INCIDENT_DPS_PER_BLOCK = 2;
-/** Daño por segundo de un habitante al incidente: base + Poderío (P) × factor. */
+// Combate: daño por segundo de un habitante = base + Poderío (P) × factor + arma.
 export const DWELLER_BASE_DPS = 1;
 export const DWELLER_DPS_PER_P = 0.2;
 export const INCIDENT_REWARD_PER_BLOCK = 15;
+
 
 // ---------------------------------------------------------------------------
 // Sprint 3: habitantes, niveles, felicidad y reproducción
@@ -462,3 +459,75 @@ export const SCRAP_YIELD: Record<Rarity, Partial<Record<Rarity, number>>> = {
 };
 
 export const BARBER_COST = 50;
+
+// ---------------------------------------------------------------------------
+// Sprint 6: incidentes, asaltos, combate y muerte
+// ---------------------------------------------------------------------------
+
+export interface IncidentDef {
+  name: string;
+  /** Con artículo, para los avisos ("el incendio"). */
+  label: string;
+  hpPerBlock: number;
+  /** Daño por segundo y por bloque, repartido entre los defensores de la sala. */
+  dpsPerBlock: number;
+  /** Consumo extra por segundo y por bloque mientras dura. */
+  drain: { energy?: number; food?: number; water?: number };
+  /** Piso mínimo donde puede aparecer (los topos viven en lo hondo). */
+  minFloor: number;
+}
+
+export const INCIDENT_DEFS: Record<IncidentKind, IncidentDef> = {
+  fire: { name: 'Incendio', label: 'el incendio', hpPerBlock: 40, dpsPerBlock: 2, drain: { energy: 0.05 }, minFloor: 0 },
+  gas: { name: 'Fuga de gas', label: 'la fuga de gas', hpPerBlock: 30, dpsPerBlock: 3, drain: { energy: 0.08 }, minFloor: 0 },
+  roaches: { name: 'Plaga de cucarachas', label: 'la plaga de cucarachas', hpPerBlock: 40, dpsPerBlock: 1.5, drain: { energy: 0.02, food: 0.05 }, minFloor: 0 },
+  rats: { name: 'Ratas mutantes', label: 'las ratas mutantes', hpPerBlock: 60, dpsPerBlock: 2.5, drain: { food: 0.08, water: 0.04 }, minFloor: 0 },
+  moles: { name: 'Topos gigantes', label: 'los topos gigantes', hpPerBlock: 90, dpsPerBlock: 3, drain: { energy: 0.04, water: 0.06 }, minFloor: 6 },
+};
+
+/** Segundos que un incidente aguanta en una sala vacía antes de propagarse a una vecina. */
+export const INCIDENT_SPREAD_SECONDS = 20;
+/** Cada cuánto se tira el dado de incidente aleatorio, y con qué probabilidad sale. */
+export const RANDOM_INCIDENT_CHECK_SECONDS = 30;
+export const RANDOM_INCIDENT_CHANCE = 0.12;
+export const RANDOM_INCIDENT_MIN_POPULATION = 10;
+
+export interface RaidDef {
+  name: string;
+  /** Con artículo y en plural, para los avisos. */
+  label: string;
+  enemyName: string;
+  enemyHp: number;
+  enemyDps: number;
+  minPopulation: number;
+  /** Codos que roba cada enemigo vivo por sala saqueada. */
+  stealCodos: number;
+}
+
+export const RAID_DEFS: Record<RaidKind, RaidDef> = {
+  raiders: { name: 'Saqueadores', label: 'los saqueadores', enemyName: 'Saqueador', enemyHp: 30, enemyDps: 2, minPopulation: 0, stealCodos: 40 },
+  dogs: { name: 'Perros salvajes', label: 'los perros salvajes', enemyName: 'Perro salvaje', enemyHp: 20, enemyDps: 3, minPopulation: 0, stealCodos: 10 },
+  mutants: { name: 'Mutantes pesados', label: 'los mutantes pesados', enemyName: 'Mutante', enemyHp: 90, enemyDps: 5, minPopulation: 30, stealCodos: 60 },
+};
+
+export const RAID_CHECK_SECONDS = 60;
+export const RAID_CHANCE = 0.1;
+export const RAID_MIN_POPULATION = 14;
+/** Enemigos por asalto: base + 1 cada RAID_POPULATION_PER_ENEMY habitantes, hasta el máximo. */
+export const RAID_BASE_ENEMIES = 2;
+export const RAID_POPULATION_PER_ENEMY = 10;
+export const RAID_MAX_ENEMIES = 6;
+/** Resistencia de la puerta según su nivel de mejora. */
+export const DOOR_HP: Record<RoomLevel, number> = { 1: 80, 2: 180, 3: 320 };
+/** Puestos de guardia en la Puerta del Búnker. */
+export const ENTRANCE_GUARDS = 2;
+/** Segundos saqueando una sala vacía antes de pasar a la siguiente. */
+export const RAID_STEAL_SECONDS = 8;
+export const RAID_STEAL_FOOD = 5;
+export const RAID_STEAL_WATER = 5;
+export const RAID_REWARD_PER_ENEMY = 40;
+
+/** Felicidad que pierden los compañeros de sala cuando muere alguien. */
+export const DEATH_HAPPINESS_PENALTY = 20;
+export const REVIVE_COST_BASE = 100;
+export const REVIVE_COST_PER_LEVEL = 25;

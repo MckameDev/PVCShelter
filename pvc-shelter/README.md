@@ -30,6 +30,10 @@ src/
 │   ├── Inventory.ts     Inventario: equipar, quitar, desguazar
 │   ├── Crafting.ts      Fabricación en talleres (planos + chatarra + Codos)
 │   ├── Barber.ts        Cambio de apariencia en la Peluquería
+│   ├── Combat.ts        Reglas de combate compartidas (daño, reparto, creación de incidentes)
+│   ├── Incidents.ts     Incidentes internos: combate, consumo extra, propagación y aparición aleatoria
+│   ├── Raids.ts         Asaltos: puerta, guardias, recorrido sala por sala y saqueo
+│   ├── Revival.ts       Revivir o expulsar a los fallecidos
 │   ├── Pathfinding.ts   Rutas entre salas (Dijkstra; ascensores como aristas verticales)
 │   ├── Production.ts    Ciclos de producción, recolección y Modo Exprés
 │   ├── Simulation.ts    Tick determinista: energía por distancia, consumo, salud, incidentes
@@ -65,5 +69,6 @@ En desarrollo (`npm run dev`) el store está disponible en la consola como `wind
 - **Habitantes**: arrastrarlos a otra sala (verde = válida, rojo = no). Tocar uno abre su ficha P.A.T.R.O.N. También se asignan desde el panel de la sala; el botón de población abre la lista completa.
 - **Progresión**: las salas se desbloquean por población (pestañas del menú de construcción). Enfermería y Planta Depuradora producen curativos que se usan desde la ficha del habitante; las salas de entrenamiento suben un stat hasta 10; Almacenes y Barracones amplían inventario y población; la radio sube la felicidad y atrae gente.
 - **Equipo y fabricación**: en la ficha del habitante se equipan arma, atuendo y mascota. El botón de mochila abre el inventario (desguazar, chatarra, planos). Los talleres fabrican desde su panel; tocar el icono flotante recoge el objeto. Con una Peluquería, la ficha permite cambiar la apariencia.
+- **Incidentes y asaltos**: asigna habitantes a la sala afectada para combatir (el daño recibido se reparte). Una sala vacía deja que el incidente se propague. Los asaltantes golpean la puerta (mejórala y pon guardias en la entrada) y luego recorren el búnker. Los fallecidos se reviven o expulsan desde su ficha.
 - **Reproducción**: un hombre y una mujer adultos sin parentesco en una Sala de Descanso se cortejan; luego vienen embarazo, nacimiento y niñez (los niños comen pero no trabajan).
 - **Producción**: tocar el icono flotante recolecta todas las salas listas de ese recurso. **Exprés** produce al instante con un % de fallo; si falla, provoca un incidente.

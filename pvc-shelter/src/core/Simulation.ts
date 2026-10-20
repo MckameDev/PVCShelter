@@ -1,12 +1,9 @@
 import {
-  DWELLER_BASE_DPS,
-  DWELLER_DPS_PER_P,
+  DEATH_HAPPINESS_PENALTY,
   ENERGY_RESERVE_SECONDS,
   FOOD_PER_DWELLER,
   HP_REGEN,
   HUNGER_DAMAGE,
-  INCIDENT_DPS_PER_BLOCK,
-  INCIDENT_REWARD_PER_BLOCK,
   INTOX_RECOVERY,
   ROOM_DEFS,
   RUSH_HEAT_DECAY_SECONDS,
@@ -27,11 +24,16 @@ import {
   updateTraining,
 } from './LifeCycle';
 import type { LifeEvent } from './LifeCycle';
+import { canFight } from './Combat';
 import { craftTime, WORKSHOP_KIND } from './Crafting';
-import { effectiveStat, petBonus, weaponDamage } from './Equipment';
+import { effectiveStat, petBonus } from './Equipment';
+import { maybeStartRandomIncident, updateIncidents } from './Incidents';
+import type { IncidentContext, IncidentEvent } from './Incidents';
+import { maybeStartRaid, raidRoomId, updateRaid } from './Raids';
+import type { RaidEvent } from './Raids';
 import { cycleTime, getRuntime } from './Production';
 import { createRng, hashString } from './random';
-import type { Dweller, GameData, GridState, IncidentKind, Room, RoomRuntime } from './types';
+import type { Dweller, GameData, GridState, Room, RoomRuntime } from './types';
 
 // Simulación por ticks. Función pura y determinista (sin RNG ni reloj): el
 // mismo estado + el mismo dt da siempre el mismo resultado. Eso permite
@@ -42,8 +44,9 @@ export const SIM_STEP = 0.25;
 
 export type SimEvent =
   | LifeEvent
+  | IncidentEvent
+  | RaidEvent
   | { type: 'dweller-died'; name: string }
-  | { type: 'incident-resolved'; roomId: string; kind: IncidentKind; codos: number }
   | { type: 'shortage'; resource: 'food' | 'water' | 'energy' };
 
 // ---------------------------------------------------------------------------
@@ -132,9 +135,10 @@ export function simulate(data: GameData, dt: number): { data: GameData; events: 
   const dwellers: Record<string, Dweller> = {};
   for (const [id, d] of Object.entries(data.dwellers)) dwellers[id] = { ...d };
 
-  // 0. Las embarazadas huyen de las salas con incidentes.
+  // 0. Las embarazadas huyen de las salas con incidentes o asaltantes.
+  const raidRoom = raidRoomId(data.raid);
   for (const d of Object.values(dwellers)) {
-    if (d.alive && d.pregnancy && d.roomId && data.runtime[d.roomId]?.incident) {
+    if (d.alive && d.pregnancy && d.roomId && (data.runtime[d.roomId]?.incident || d.roomId === raidRoom)) {
       d.roomId = null;
       life.push({ type: 'fled', name: d.name });
     }
@@ -174,32 +178,26 @@ export function simulate(data: GameData, dt: number): { data: GameData; events: 
   if (hadFood && food.shortage > 0) events.push({ type: 'shortage', resource: 'food' });
   if (hadWater && water.shortage > 0) events.push({ type: 'shortage', resource: 'water' });
 
-  // 3. Incidentes: los habitantes de la sala lo combaten y reciben daño repartido.
+  // 3. Incidentes y asaltos: quienes están en la sala pelean y reciben el daño repartido.
   const damage = new Map<string, number>();
-  for (const room of Object.values(grid.rooms)) {
-    const rt = runtime[room.id];
-    if (!rt.incident) continue;
-    const workers = workersByRoom.get(room.id) ?? [];
-    // Daño: base + Poderío + arma, potenciado por mascotas de combate.
-    const dps = workers.reduce(
-      (sum, w) =>
-        sum + (DWELLER_BASE_DPS + effectiveStat(w, 'P') * DWELLER_DPS_PER_P + weaponDamage(w)) * (1 + petBonus(w, 'damage')),
-      0,
-    );
-    const hp = rt.incident.hp - dps * dt;
-    if (workers.length > 0) {
-      const share = (INCIDENT_DPS_PER_BLOCK * room.blocks * dt) / workers.length;
-      for (const w of workers) damage.set(w.id, (damage.get(w.id) ?? 0) + share);
-    }
-    if (hp <= 0) {
-      const codos = INCIDENT_REWARD_PER_BLOCK * room.blocks;
-      resources.codos += codos;
-      runtime[room.id] = { ...rt, incident: null };
-      events.push({ type: 'incident-resolved', roomId: room.id, kind: rt.incident.kind, codos });
-    } else {
-      runtime[room.id] = { ...rt, incident: { ...rt.incident, hp } };
-    }
-  }
+  const conflict: IncidentEvent[] = [];
+  const ctx: IncidentContext = {
+    grid,
+    runtime,
+    resources,
+    defenders: (roomId) => (workersByRoom.get(roomId) ?? []).filter(canFight),
+    damage,
+    events: conflict,
+    seed: grid.seed,
+    time: data.time,
+  };
+  updateIncidents(ctx, dt);
+  maybeStartRandomIncident(ctx, alive.length, dt);
+  const raidEvents: RaidEvent[] = [];
+  const raidCtx = { ...ctx, events: raidEvents };
+  const raid = data.raid ? updateRaid(data.raid, raidCtx, dt) : maybeStartRaid(raidCtx, alive.length, dt);
+  events.push(...conflict, ...raidEvents);
+  const dangerRoom = raidRoomId(raid);
 
   // 4. Salud: hambre quita HP, sed intoxica; con ambos cubiertos se recupera despacio.
   for (const d of alive) {
@@ -214,6 +212,10 @@ export function simulate(data: GameData, dt: number): { data: GameData; events: 
     dw.hp = Math.min(dw.maxHp - dw.intox, dw.hp);
 
     if (dw.hp <= 0) {
+      // La muerte entristece a los compañeros de sala.
+      for (const mate of workersByRoom.get(dw.roomId ?? '') ?? []) {
+        if (mate.id !== dw.id) dwellers[mate.id].happiness = Math.max(0, dwellers[mate.id].happiness - DEATH_HAPPINESS_PENALTY);
+      }
       dw.hp = 0;
       dw.alive = false;
       dw.roomId = null;
@@ -228,7 +230,7 @@ export function simulate(data: GameData, dt: number): { data: GameData; events: 
   for (const room of Object.values(grid.rooms)) {
     const rt = runtime[room.id];
     const stat = ROOM_DEFS[room.type].stat;
-    if (!ROOM_DEFS[room.type].produces || !stat || rt.ready || rt.incident || !rt.powered) continue;
+    if (!ROOM_DEFS[room.type].produces || !stat || rt.ready || rt.incident || !rt.powered || room.id === dangerRoom) continue;
     const workers = (workersByRoom.get(room.id) ?? []).filter((w) => dwellers[w.id].alive);
     const t = cycleTime(room, workers, happiness);
     if (t === null) continue;
@@ -241,7 +243,7 @@ export function simulate(data: GameData, dt: number): { data: GameData; events: 
   let nextId = data.nextDwellerId;
   for (const room of Object.values(grid.rooms)) {
     const rt = runtime[room.id];
-    if (!rt.powered || rt.incident) continue;
+    if (!rt.powered || rt.incident || room.id === dangerRoom) continue;
     const occupants = (workersByRoom.get(room.id) ?? []).map((w) => dwellers[w.id]).filter((d) => d.alive);
 
     if (ROOM_DEFS[room.type].trains) updateTraining(room, occupants, dt, life);
@@ -282,6 +284,7 @@ export function simulate(data: GameData, dt: number): { data: GameData; events: 
     const target = happinessTarget(d, {
       room,
       runtime: room ? runtime[room.id] : undefined,
+      inDanger: !!room && (!!runtime[room.id]?.incident || room.id === dangerRoom),
       foodShortage: food.shortage > 0,
       waterShortage: water.shortage > 0,
       radioBonus,
@@ -303,7 +306,8 @@ export function simulate(data: GameData, dt: number): { data: GameData; events: 
 
 
   return {
-    data: { ...data, resources, runtime, dwellers, nextDwellerId, time: data.time + dt },
+    data: { ...data, resources, runtime, dwellers, raid, nextDwellerId, time: data.time + dt },
+
     events: [...events, ...life],
   };
 }

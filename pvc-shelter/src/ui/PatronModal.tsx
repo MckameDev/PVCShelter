@@ -4,6 +4,7 @@ import { CHILDHOOD_SECONDS, COURTSHIP_SECONDS, PREGNANCY_SECONDS, ROOM_DEFS } fr
 import { effectiveMaxHp, isAdult, PATRON_KEYS, PATRON_NAMES, xpToNextLevel } from '../core/Dwellers';
 import { effectiveStat } from '../core/Equipment';
 import { canApplyMed } from '../core/Health';
+import { canRevive, reviveCost } from '../core/Revival';
 import { useGameStore } from '../store/useGameStore';
 import { BarberSection } from './BarberSection';
 import { EquipmentSection } from './EquipmentSection';
@@ -28,6 +29,8 @@ export function PatronModal() {
   const dwellers = useGameStore((s) => s.dwellers);
   const close = useGameStore((s) => s.openDweller);
   const heal = useGameStore((s) => s.heal);
+  const revive = useGameStore((s) => s.revive);
+  const expel = useGameStore((s) => s.expel);
   const meds = useGameStore((s) => s.resources);
   const game = useGameStore();
   const select = useGameStore((s) => s.select);
@@ -61,6 +64,35 @@ export function PatronModal() {
             <X size={18} />
           </button>
         </header>
+
+        {!dweller.alive && (
+          <div className="mb-3 space-y-2 rounded-lg border border-red-500/60 bg-red-950/50 p-2">
+            <p className="text-xs text-red-200">Ha muerto. Puedes revivirlo pagando Codos o expulsarlo definitivamente.</p>
+            <div className="flex gap-2">
+              {(() => {
+                const check = canRevive(game, dweller.id);
+                return (
+                  <button
+                    type="button"
+                    onClick={() => revive(dweller.id)}
+                    disabled={!check.ok}
+                    title={check.ok ? undefined : check.reason}
+                    className="flex-1 rounded-lg border-2 border-emerald-400/70 py-1.5 text-sm font-bold hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Revivir ({reviveCost(dweller)} Codos)
+                  </button>
+                );
+              })()}
+              <button
+                type="button"
+                onClick={() => expel(dweller.id)}
+                className="flex-1 rounded-lg border-2 border-red-400/70 py-1.5 text-sm font-bold hover:bg-red-500/20"
+              >
+                Expulsar
+              </button>
+            </div>
+          </div>
+        )}
 
         {dweller.alive && (
           <div className="mb-3 space-y-2">

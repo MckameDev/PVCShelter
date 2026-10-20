@@ -11,7 +11,20 @@ import * as Grid from '../core/GridManager';
 import { collectResource, RESOURCE_NAMES, rushRoom } from '../core/Production';
 import { advance } from '../core/Simulation';
 import type { SimEvent } from '../core/Simulation';
-import type { Appearance, GameData, ItemKind, MedResource, ProducedResource, Rarity, Rng, RoomType } from '../core/types';
+import { INCIDENT_DEFS, RAID_DEFS, ROOM_DEFS } from '../core/config';
+import { expelDweller, reviveDweller } from '../core/Revival';
+import type {
+  Appearance,
+  GameData,
+  GridState,
+  IncidentKind,
+  ItemKind,
+  MedResource,
+  ProducedResource,
+  Rarity,
+  Rng,
+  RoomType,
+} from '../core/types';
 
 export type Selection = { kind: 'room'; id: string } | { kind: 'rock'; id: string } | null;
 
@@ -56,6 +69,8 @@ interface Actions {
   craft: (roomId: string, defId: string) => boolean;
   collectCrafted: (roomId: string) => boolean;
   restyle: (dwellerId: string, appearance: Appearance) => boolean;
+  revive: (dwellerId: string) => boolean;
+  expel: (dwellerId: string) => boolean;
   dismissNotice: () => void;
 }
 
@@ -77,6 +92,7 @@ const pickData = (s: GameState): GameData => ({
   dwellers: s.dwellers,
   runtime: s.runtime,
   inventory: s.inventory,
+  raid: s.raid,
   nextDwellerId: s.nextDwellerId,
   time: s.time,
 });
@@ -91,10 +107,26 @@ const freshState = (seed: number): GameData & UiState => ({
   inventoryOpen: false,
 });
 
-const INCIDENT_NAMES = { fire: 'el incendio', roaches: 'la plaga de cucarachas' } as const;
+const incidentLabel = (kind: IncidentKind) => INCIDENT_DEFS[kind].label;
+const roomName = (grid: GridState, roomId: string) => {
+  const room = grid.rooms[roomId];
+  return room ? ROOM_DEFS[room.type].name : 'una sala';
+};
 
-function describeEvent(e: SimEvent): Notice {
+function describeEvent(e: SimEvent, grid: GridState): Notice {
   switch (e.type) {
+    case 'raid-started':
+      return notice(`¡${RAID_DEFS[e.kind].name} en la puerta! (${e.enemies})`, 'error');
+    case 'door-breached':
+      return notice(`¡${capitalize(RAID_DEFS[e.kind].label)} rompieron la puerta y entran al búnker!`, 'error');
+    case 'raid-repelled':
+      return notice(`Rechazaron a ${RAID_DEFS[e.kind].label}. +${e.codos} Codos.`, 'success');
+    case 'raid-left':
+      return notice(`${capitalize(RAID_DEFS[e.kind].label)} se fueron con ${Math.round(e.loot.codos)} Codos robados.`, 'error');
+    case 'incident-started':
+      return notice(`¡${INCIDENT_DEFS[e.kind].name} en ${roomName(grid, e.roomId)}!`, 'error');
+    case 'incident-spread':
+      return notice(`${capitalize(incidentLabel(e.kind))} se propagó a ${roomName(grid, e.roomId)}.`, 'error');
     case 'dweller-died':
       return notice(`${e.name} ha muerto.`, 'error');
     case 'shortage':
@@ -110,7 +142,7 @@ function describeEvent(e: SimEvent): Notice {
     case 'conceived':
       return notice(`${e.mother} y ${e.father} esperan un bebé.`, 'success');
     case 'incident-resolved':
-      return notice(`Controlaron ${INCIDENT_NAMES[e.kind]}. +${e.codos} Codos.`, 'success');
+      return notice(`Controlaron ${incidentLabel(e.kind)}. +${e.codos} Codos.`, 'success');
     case 'trained':
       return notice(`${e.name} subió ${PATRON_NAMES[e.stat]} a ${e.value}.`, 'success');
     case 'recruited':
@@ -120,7 +152,13 @@ function describeEvent(e: SimEvent): Notice {
 
 /** Orden de importancia: solo se muestra el evento más relevante del tick. */
 const EVENT_PRIORITY: SimEvent['type'][] = [
+  'raid-started',
+  'door-breached',
   'dweller-died',
+  'raid-left',
+  'raid-repelled',
+  'incident-started',
+  'incident-spread',
   'shortage',
   'fled',
   'birth',
@@ -132,13 +170,15 @@ const EVENT_PRIORITY: SimEvent['type'][] = [
   'incident-resolved',
 ];
 
-function eventNotice(events: SimEvent[]): Notice | null {
+function eventNotice(events: SimEvent[], grid: GridState): Notice | null {
   for (const type of EVENT_PRIORITY) {
     const e = events.find((ev) => ev.type === type);
-    if (e) return describeEvent(e);
+    if (e) return describeEvent(e, grid);
   }
   return null;
 }
+
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 export const useGameStore = create<GameState>()((set, get) => {
   const fail = (reason: string) => {
@@ -162,7 +202,7 @@ export const useGameStore = create<GameState>()((set, get) => {
 
     tick: (seconds) => {
       const { data, events } = advance(pickData(get()), seconds);
-      const n = eventNotice(events);
+      const n = eventNotice(events, data.grid);
       set(n ? { ...data, notice: n } : data);
     },
 
@@ -266,7 +306,7 @@ export const useGameStore = create<GameState>()((set, get) => {
       const { data, outcome } = res.value;
       const text = outcome.success
         ? `¡Exprés exitoso! +${outcome.stored} ${RESOURCE_NAMES[outcome.resource]} · +${outcome.codos} Codos`
-        : `¡El Exprés falló! Se desató ${INCIDENT_NAMES[outcome.incident]}.`;
+        : `¡El Exprés falló! Se desató ${incidentLabel(outcome.incident)}.`;
       set({ ...data, notice: notice(text, outcome.success ? 'success' : 'error') });
       return true;
     },
@@ -325,7 +365,25 @@ export const useGameStore = create<GameState>()((set, get) => {
       return true;
     },
 
+    revive: (dwellerId) => {
+      const res = reviveDweller(pickData(get()), dwellerId);
+      if (!res.ok) return fail(res.reason);
+      set({ ...res.value, notice: notice(`${res.value.dwellers[dwellerId].name} ha vuelto a la vida.`, 'success') });
+      return true;
+    },
+
+    expel: (dwellerId) => {
+      const state = get();
+      const name = state.dwellers[dwellerId]?.name ?? 'El habitante';
+      const res = expelDweller(pickData(state), dwellerId);
+      if (!res.ok) return fail(res.reason);
+      const extra = res.value.lost > 0 ? ` Se perdieron ${res.value.lost} objetos por falta de sitio.` : '';
+      set({ ...res.value.data, dwellerModalId: null, notice: notice(`${name} fue expulsado del búnker.${extra}`, 'info') });
+      return true;
+    },
+
     restyle: (dwellerId, appearance) => {
+
       const res = restyleDweller(pickData(get()), dwellerId, appearance);
       if (!res.ok) return fail(res.reason);
       set({ ...res.value, notice: notice('¡Nuevo look!', 'success') });

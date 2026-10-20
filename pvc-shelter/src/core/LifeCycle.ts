@@ -54,6 +54,8 @@ export function applyLevelUps(d: Dweller, events: LifeEvent[]): number {
 interface HappinessContext {
   room: Room | undefined;
   runtime: RoomRuntime | undefined;
+  /** Incidente o asaltantes en su sala. */
+  inDanger: boolean;
   foodShortage: boolean;
   waterShortage: boolean;
   /** Puntos extra que da la radio a todos los adultos. */
@@ -69,7 +71,7 @@ export function happinessTarget(d: Dweller, ctx: HappinessContext): number {
     if (stat && d.stats[stat] >= bestStatValue(d)) target += 30; // su "sala adecuada"
     else target += 10;
     if (ctx.runtime && !ctx.runtime.powered) target -= 15;
-    if (ctx.runtime?.incident) target -= 25;
+    if (ctx.inDanger) target -= 25;
   } else {
     target -= 15; // sin ocupación
   }

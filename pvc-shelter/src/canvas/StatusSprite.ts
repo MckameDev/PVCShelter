@@ -1,7 +1,8 @@
 import type { Graphics } from 'pixi.js';
 import { ROOM_DEFS } from '../core/config';
 import { roomWidth } from '../core/GridManager';
-import type { ProducedResource, Room, RoomRuntime } from '../core/types';
+import type { IncidentKind, ProducedResource, Room, RoomRuntime } from '../core/types';
+
 import { CELL_W, FLOOR_H } from './layout';
 
 // Estado dinámico dibujado sobre las salas en cada frame (una sola Graphics para
@@ -62,6 +63,47 @@ interface RoomStatus {
   craftTotal: number | null;
 }
 
+/** Bichos que corretean por la sala (cucarachas, ratas, topos). */
+function drawCritters(g: Graphics, count: number, x0: number, y0: number, w: number, h: number, timeMs: number, size: number, color: number) {
+  for (let i = 0; i < count; i++) {
+    const t = timeMs / (500 + size * 60) + i * 1.7;
+    const rx = x0 + 16 + ((Math.sin(t) + 1) / 2) * (w - 32);
+    const ry = y0 + h - 22 - size + Math.cos(t * 1.3 + i) * 4;
+    g.ellipse(rx, ry, size * 1.7, size).fill(color);
+    g.circle(rx + size * 1.6 * Math.sign(Math.cos(t)), ry - size * 0.3, size * 0.6).fill(color);
+  }
+}
+
+function drawIncident(g: Graphics, kind: IncidentKind, x0: number, y0: number, w: number, h: number, blocks: number, timeMs: number) {
+  switch (kind) {
+    case 'fire':
+      for (let x = x0 + 14; x < x0 + w - 14; x += 22) {
+        const flick = 6 * Math.sin(timeMs / 90 + x);
+        g.poly([x - 9, y0 + h - 16, x, y0 + h - 44 - flick, x + 9, y0 + h - 16]).fill(0xff8a1f);
+        g.poly([x - 5, y0 + h - 16, x, y0 + h - 32 - flick / 2, x + 5, y0 + h - 16]).fill(0xffd34d);
+      }
+      break;
+    case 'gas':
+      // Nubes verdosas que suben y se deshacen
+      for (let i = 0; i < 5 * blocks; i++) {
+        const t = (timeMs / 1800 + i * 0.37) % 1;
+        const cx = x0 + 14 + ((i * 53) % (w - 28));
+        g.circle(cx, y0 + h - 20 - t * 50, 8 + t * 10).fill({ color: 0x9be05c, alpha: 0.45 * (1 - t) });
+      }
+      break;
+    case 'roaches':
+      drawCritters(g, 4 * blocks, x0, y0, w, h, timeMs, 3.5, 0x3b2412);
+      break;
+    case 'rats':
+      drawCritters(g, 3 * blocks, x0, y0, w, h, timeMs, 6, 0x6b6b6b);
+      break;
+    case 'moles':
+      for (let i = 0; i < 2 * blocks; i++) g.ellipse(x0 + 30 + i * 60, y0 + h - 16, 18, 7).fill(0x5c4030);
+      drawCritters(g, 2 * blocks, x0, y0, w, h, timeMs, 8, 0x8a6a4a);
+      break;
+  }
+}
+
 /** Icono de "objeto terminado" de los talleres: caja con una estrella. */
 function drawCraftIcon(g: Graphics, cx: number, cy: number, r: number, color: number) {
   g.circle(cx, cy, r + 3).fill({ color: 0x000000, alpha: 0.35 });
@@ -96,20 +138,7 @@ export function drawRoomStatus(g: Graphics, { room, runtime, workers, capacity, 
   if (runtime.incident) {
     const pulse = 0.2 + 0.15 * Math.sin(timeMs / 180);
     g.rect(x0 + 3, y0 + 3, w - 6, h - 6).fill({ color: 0xff2a1a, alpha: pulse });
-    if (runtime.incident.kind === 'fire') {
-      for (let x = x0 + 14; x < x0 + w - 14; x += 22) {
-        const flick = 6 * Math.sin(timeMs / 90 + x);
-        g.poly([x - 9, y0 + h - 16, x, y0 + h - 44 - flick, x + 9, y0 + h - 16]).fill(0xff8a1f);
-        g.poly([x - 5, y0 + h - 16, x, y0 + h - 32 - flick / 2, x + 5, y0 + h - 16]).fill(0xffd34d);
-      }
-    } else {
-      for (let i = 0; i < 4 * room.blocks; i++) {
-        const t = timeMs / 700 + i * 1.7;
-        const rx = x0 + 16 + ((Math.sin(t) + 1) / 2) * (w - 32);
-        const ry = y0 + h - 26 + Math.cos(t * 1.3 + i) * 6;
-        g.ellipse(rx, ry, 6, 3.5).fill(0x3b2412);
-      }
-    }
+    drawIncident(g, runtime.incident.kind, x0, y0, w, h, room.blocks, timeMs);
     const frac = runtime.incident.hp / runtime.incident.maxHp;
     g.rect(x0 + 10, y0 + 28, w - 20, 5).fill(0x000000);
     g.rect(x0 + 10, y0 + 28, (w - 20) * frac, 5).fill(0xff4a3a);

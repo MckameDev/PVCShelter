@@ -22,6 +22,7 @@ export function createNewGame(seed: number): GameData {
     dwellers,
     runtime,
     inventory: createStartingInventory(),
+    raid: null,
     nextDwellerId: nextId,
     time: 0,
   };
@@ -71,6 +72,7 @@ export function canDemolish(data: GameData, roomId: string): Result<Room> {
   if (dwellersInRoom(data, roomId).length > 0) return fail('Saca primero a los habitantes de la sala.');
   if (getRuntime(data, roomId).incident) return fail('No se puede demoler durante un incidente.');
   if (getRuntime(data, roomId).craft) return fail('Recoge o termina la fabricación antes de demoler el taller.');
+  if (data.raid) return fail('No se puede demoler durante un asalto.');
   return check;
 }
 

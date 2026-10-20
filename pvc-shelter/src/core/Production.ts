@@ -3,7 +3,6 @@ import {
   CODOS_CHANCE_PER_R,
   HAPPINESS_SPEED_MIN,
   HAPPINESS_SPEED_RANGE,
-  INCIDENT_HP_PER_BLOCK,
   MIN_CYCLE_FACTOR,
   REFERENCE_STAT,
   ROOM_DEFS,
@@ -16,6 +15,7 @@ import {
   XP_PER_COLLECT,
   XP_PER_RUSH,
 } from './config';
+import { createIncident, pickIncidentKind } from './Combat';
 import { dwellersInRoom } from './Dwellers';
 import { roomCapacity, roomEfficiency, storageCap } from './Economy';
 import { averagePetBonus, effectiveStat } from './Equipment';
@@ -161,9 +161,8 @@ export function rushRoom(data: GameData, roomId: string, rng: Rng): Result<{ dat
   const heated: RoomRuntime = { ...runtime, rushHeat: runtime.rushHeat + 1 };
 
   if (rng() < failChance) {
-    const kind: IncidentKind = rng() < 0.5 ? 'fire' : 'roaches';
-    const hp = INCIDENT_HP_PER_BLOCK * room.blocks;
-    const next = { ...data, runtime: { ...data.runtime, [roomId]: { ...heated, incident: { kind, hp, maxHp: hp } } } };
+    const kind: IncidentKind = pickIncidentKind(rng, room);
+    const next = { ...data, runtime: { ...data.runtime, [roomId]: { ...heated, incident: createIncident(kind, room) } } };
     return ok({ data: next, outcome: { success: false, incident: kind } });
   }
 

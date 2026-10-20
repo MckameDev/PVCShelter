@@ -1,9 +1,31 @@
-import { ArrowBigUp, Baby, Flame, Heart, Mountain, Pickaxe, Radio, Trash, UserMinus, Wrench, X, Zap, ZapOff } from 'lucide-react';
+import {
+  ArrowBigUp,
+  Baby,
+  Flame,
+  Heart,
+  Mountain,
+  Pickaxe,
+  Radio,
+  ShieldAlert,
+  Trash,
+  UserMinus,
+  Wrench,
+  X,
+  Zap,
+  ZapOff,
+} from 'lucide-react';
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { canDemolish } from '../core/Bunker';
+import { canFight } from '../core/Combat';
+import { raidRoomId } from '../core/Raids';
 import {
   COURTSHIP_SECONDS,
+  DOOR_HP,
+  ENTRANCE_GUARDS,
+  INCIDENT_DEFS,
+  INCIDENT_SPREAD_SECONDS,
+  RAID_DEFS,
   ITEM_CAPACITY_PER_STORAGE_BLOCK,
   LEVEL_EFFICIENCY,
   MAX_BASE_STAT,
@@ -80,19 +102,13 @@ function ProductionSection({ room }: { room: Room }) {
 
   const runtime = getRuntime(state, room.id);
   const workers = dwellersInRoom(state, room.id);
-  const cycle = cycleTime(room, workers);
+  const cycle = cycleTime(room, workers, globalHappiness(state));
   const rush = canRush(state, room.id);
   const resourceName = RESOURCE_NAMES[def.produces];
 
   let status: ReactNode;
-  if (runtime.incident) {
-    const pct = Math.ceil((runtime.incident.hp / runtime.incident.maxHp) * 100);
-    status = (
-      <span className="flex items-center gap-1 text-red-300">
-        <Flame size={14} /> {runtime.incident.kind === 'fire' ? 'Incendio' : 'Plaga de cucarachas'} ({pct}%)
-        {workers.length === 0 && ' · ¡asigna habitantes para combatirlo!'}
-      </span>
-    );
+  if (runtime.incident || raidRoomId(state.raid) === room.id) {
+    status = <span className="text-red-300">Producción detenida mientras dure el peligro.</span>;
   } else if (!runtime.powered) {
     status = (
       <span className="flex items-center gap-1 text-red-300">
@@ -321,6 +337,57 @@ function RadioSection({ room }: { room: Room }) {
   );
 }
 
+/** Incidente o asaltantes en esta sala: estado del combate y cuenta atrás de propagación. */
+function DangerSection({ room }: { room: Room }) {
+  const state = useGameStore();
+  const incident = state.runtime[room.id]?.incident;
+  const raidHere = raidRoomId(state.raid) === room.id;
+  if (!incident && !raidHere) return null;
+  const defenders = dwellersInRoom(state, room.id).filter(canFight);
+
+  return (
+    <div className="mb-3 space-y-1.5 rounded-lg border border-red-500/60 bg-red-950/60 p-2 text-sm">
+      {incident && (
+        <div>
+          <div className="flex items-center justify-between gap-2 text-red-200">
+            <span className="flex items-center gap-1 font-bold">
+              <Flame size={14} /> {INCIDENT_DEFS[incident.kind].name}
+            </span>
+            <span className="tabular-nums text-xs">{Math.ceil((incident.hp / incident.maxHp) * 100)}%</span>
+          </div>
+          <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-black/60">
+            <div className="h-full bg-red-400" style={{ width: `${(incident.hp / incident.maxHp) * 100}%` }} />
+          </div>
+          <p className="mt-1 text-xs text-red-200">
+            {defenders.length > 0
+              ? `${defenders.length} combatiendo. El daño recibido se reparte entre ellos.`
+              : `¡Sala vacía! Se propagará en ${Math.max(0, Math.ceil(INCIDENT_SPREAD_SECONDS - incident.spread))} s. Asigna habitantes.`}
+          </p>
+        </div>
+      )}
+      {raidHere && state.raid && (
+        <p className="flex items-center gap-1 text-xs text-red-200">
+          <ShieldAlert size={14} />
+          {RAID_DEFS[state.raid.kind].name} en esta sala:{' '}
+          {defenders.length > 0 ? `${defenders.length} defensores combatiendo.` : 'la están saqueando.'}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Puerta del Búnker: resistencia según nivel y guardias. */
+function DoorSection({ room }: { room: Room }) {
+  if (room.type !== 'entrance') return null;
+  return (
+    <p className="mb-3 rounded-lg bg-black/30 p-2 text-xs text-pvc/70">
+      La puerta aguanta {DOOR_HP[room.level]} de daño antes de ceder
+      {room.level < 3 && ` (nivel ${room.level + 1}: ${DOOR_HP[(room.level + 1) as 2 | 3]})`}. Los {ENTRANCE_GUARDS} guardias
+      disparan a los asaltantes mientras golpean la puerta.
+    </p>
+  );
+}
+
 function RoomDetails({ room }: { room: Room }) {
   const state = useGameStore();
   // Se reinicia al cambiar de sala porque el padre usa key={room.id}.
@@ -356,6 +423,8 @@ function RoomDetails({ room }: { room: Room }) {
         <Row label="Piso" value={room.floor} />
       </div>
 
+      <DangerSection room={room} />
+      <DoorSection room={room} />
       <ProductionSection room={room} />
       <LivingSection room={room} />
       <TrainingSection room={room} />

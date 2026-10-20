@@ -78,7 +78,7 @@ describe('equipo', () => {
     data = unwrap(assignDweller(data, d.id, roomId));
     data = {
       ...data,
-      runtime: { ...data.runtime, [roomId]: { ...data.runtime[roomId], incident: { kind: 'roaches', hp: 1000, maxHp: 1000 } } },
+      runtime: { ...data.runtime, [roomId]: { ...data.runtime[roomId], incident: { kind: 'roaches', hp: 1000, maxHp: 1000, spread: 0 } } },
     };
     const bare = simulate(data, 1).data.runtime[roomId].incident!.hp;
     const { data: armed0, item } = unwrap(addItem(data, 'drum-bazooka'));

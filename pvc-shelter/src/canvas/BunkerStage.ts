@@ -9,6 +9,7 @@ import type { ProducedResource } from '../core/types';
 import { useGameStore } from '../store/useGameStore';
 import { cycleTime, getRuntime } from '../core/Production';
 import { DwellerLayer } from './DwellerSprite';
+import { drawRaid } from './RaidSprite';
 import { createRockView, createRoomView } from './RoomSprite';
 import { drawRoomStatus, READY_ICON_RADIUS, readyIconCenter } from './StatusSprite';
 import { createTerrainView, worldBounds } from './TerrainSprite';
@@ -472,6 +473,7 @@ export class BunkerStage {
         now,
       );
     }
+    if (state.raid) drawRaid(g, state.raid, state.grid, now);
   };
 
   /** Si el punto cae sobre el icono de una sala lista, devuelve el recurso a recolectar. */

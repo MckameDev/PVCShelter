@@ -154,12 +154,45 @@ export interface Inventory {
   nextItemId: number;
 }
 
-export type IncidentKind = 'fire' | 'roaches';
+/** Incendios y fugas de gas; plagas de cucarachas, ratas mutantes y topos. */
+export type IncidentKind = 'fire' | 'gas' | 'roaches' | 'rats' | 'moles';
 
 export interface Incident {
   kind: IncidentKind;
   hp: number;
   maxHp: number;
+  /** Segundos que lleva la sala sin defensores; al llegar al umbral se propaga. */
+  spread: number;
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 6: asaltos externos
+// ---------------------------------------------------------------------------
+
+export type RaidKind = 'raiders' | 'dogs' | 'mutants';
+
+export interface Enemy {
+  id: string;
+  hp: number;
+  maxHp: number;
+  /** Daño por segundo que inflige mientras vive. */
+  dps: number;
+}
+
+export interface Raid {
+  kind: RaidKind;
+  enemies: Enemy[];
+  /** 'door': golpeando la puerta; 'inside': recorriendo el búnker. */
+  phase: 'door' | 'inside';
+  doorHp: number;
+  doorMaxHp: number;
+  /** Orden de salas que recorrerán dentro (fijado al romper la puerta). */
+  route: string[];
+  /** Índice de la sala actual dentro de `route`. */
+  step: number;
+  /** Segundos saqueando la sala actual cuando no hay defensores. */
+  stealTimer: number;
+  loot: { codos: number; food: number; water: number };
 }
 
 /** Estado dinámico de una sala (separado de Room para no mezclarlo con la geometría). */
@@ -183,6 +216,9 @@ export interface GameData {
   dwellers: Record<string, Dweller>;
   runtime: Record<string, RoomRuntime>;
   inventory: Inventory;
+  /** Asalto en curso, si lo hay. */
+  raid: Raid | null;
+
   nextDwellerId: number;
 
   /** Segundos simulados desde el inicio de la partida. */

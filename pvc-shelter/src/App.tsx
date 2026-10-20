@@ -6,6 +6,7 @@ import { DwellersPanel } from './ui/DwellersPanel';
 import { GameCanvas } from './ui/GameCanvas';
 import { InventoryPanel } from './ui/InventoryPanel';
 import { PatronModal } from './ui/PatronModal';
+import { RaidBanner } from './ui/RaidBanner';
 import { SelectionPanel } from './ui/SelectionPanel';
 import { Toast } from './ui/Toast';
 import { TopBar } from './ui/TopBar';
@@ -41,6 +42,7 @@ export default function App() {
       {/* La capa de UI no captura eventos salvo en sus paneles, para no bloquear la cámara. */}
       <div className="pointer-events-none absolute inset-0">
         <TopBar />
+        <RaidBanner />
         <Toast />
         <DwellersPanel />
         <InventoryPanel />
